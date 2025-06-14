@@ -16,6 +16,19 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+### Using real market data
+
+By default the application generates realistic mock prices so it works
+offline.  If you want to pull live quotes from Yahoo Finance set the
+`USE_REAL_DATA` environment variable when starting Expo:
+
+```bash
+USE_REAL_DATA=true npx expo start
+```
+
+Fetching real data may require running behind a proxy server to avoid
+CORS issues on some platforms.
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
