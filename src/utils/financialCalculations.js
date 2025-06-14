@@ -5,16 +5,16 @@
  * Simple normal distribution inverse for z-scores
  */
 function normalInverse(p) {
-  // Simplified approximation for common confidence levels
+  // Simplified approximation for common alpha values (tail probabilities)
   const zScores = {
-    0.90: -1.282,
-    0.95: -1.645,
-    0.99: -2.326,
-    0.975: -1.96,
-    0.995: -2.576
+    0.1: -1.282,   // 90% confidence
+    0.05: -1.645,  // 95% confidence
+    0.025: -1.96,  // 97.5% confidence (two-tailed 95%)
+    0.01: -2.326,  // 99% confidence
+    0.005: -2.576  // 99.5% confidence
   };
-  
-  return zScores[p] || zScores[0.95];
+
+  return zScores[p] || zScores[0.05];
 }
 
 /**
