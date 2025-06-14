@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { CorrelationMatrixChart, PerformanceChart, PortfolioWeightsChart } from '../src/components/Charts';
 import { dataFetcher } from '../src/utils/dataFetcher';
-import { PortfolioOptimizer } from '../src/utils/financialCalculations';
+import { PortfolioOptimizer, VaRCalculator } from '../src/utils/financialCalculations';
 
 interface OptimizationResults {
   weights: number[];
@@ -105,9 +105,7 @@ export default function PortfolioOptimizerScreen() {
       }
 
       // Calculate correlation matrix
-      const correlationMatrix = optimizer.calculateCorrelationMatrix ? 
-        optimizer.calculateCorrelationMatrix(returnsMatrix) : 
-        [[1]]; // Fallback
+      const correlationMatrix = VaRCalculator.calculateSimpleCorrelationMatrix(returnsMatrix);
 
       const results: OptimizationResults = {
         weights: optimizationResult.weights,
