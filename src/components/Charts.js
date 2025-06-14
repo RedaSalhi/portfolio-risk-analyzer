@@ -253,7 +253,7 @@ export const CAPMAnalysisChart: React.FC<CAPMAnalysisChartProps> = ({
       {/* Beta Reference Line */}
     <View style={styles.betaReference}>
       <Text style={styles.referenceText}>
-        "Beta = 1.0 (Market Risk) • Beta > 1.0 (Higher Risk) • Beta < 1.0 (Lower Risk)"
+        {'Beta = 1.0 (Market Risk) • Beta > 1.0 (Higher Risk) • Beta < 1.0 (Lower Risk)'}
       </Text>
     </View>
 
