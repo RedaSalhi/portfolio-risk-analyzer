@@ -747,6 +747,9 @@ export default function EnhancedVaRAnalyzer() {
                   );
                 })}
 
+              </View>
+              )}
+
               {activeTab === 'stress' && results.stressResults && results.stressResults.length > 0 && (
                 <View>
                   <Text style={styles.chartTitle}>Stress Test Results</Text>

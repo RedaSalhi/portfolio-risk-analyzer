@@ -382,7 +382,7 @@ export const CorrelationMatrixChart: React.FC<CorrelationMatrixChartProps> = ({
         <Text style={styles.legendTitle}>Correlation Strength</Text>
         <View style={styles.legendRow}>
           <View style={[styles.legendSquare, { backgroundColor: '#E74C3C' }]} />
-          <Text style={styles.legendLabel}>Strong Positive (>0.7)</Text>
+          <Text style={styles.legendLabel}>Strong Positive (&gt;0.7)</Text>
         </View>
         <View style={styles.legendRow}>
           <View style={[styles.legendSquare, { backgroundColor: '#F39C12' }]} />
@@ -424,7 +424,7 @@ export const CorrelationMatrixChart: React.FC<CorrelationMatrixChartProps> = ({
                 Average correlation: {avgCorrelation.toFixed(3)}
               </Text>
               <Text style={styles.insightText}>
-                High correlations (>0.7): {highCorrelations} pairs
+                High correlations (&gt;0.7): {highCorrelations} pairs
               </Text>
               <Text style={styles.insightText}>
                 Diversification benefit: {avgCorrelation < 0.3 ? 'High' : avgCorrelation < 0.7 ? 'Moderate' : 'Low'}
