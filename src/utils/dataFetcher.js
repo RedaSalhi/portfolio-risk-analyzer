@@ -51,7 +51,8 @@ export class DataFetcher {
   }
 
   /**
-   * Real Yahoo Finance data (only works with backend proxy)
+   * Fetch last year's daily prices from Yahoo Finance.
+   * This requires a backend proxy to bypass CORS.
    */
   async fetchRealYahooData(symbol, period = '1y') {
     const now = Math.floor(Date.now() / 1000);
