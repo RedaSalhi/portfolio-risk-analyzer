@@ -398,7 +398,7 @@ export const CorrelationMatrixChart: React.FC<CorrelationMatrixChartProps> = ({
         </View>
         <View style={styles.legendRow}>
           <View style={[styles.legendSquare, { backgroundColor: '#2ECC71' }]} />
-          <Text style={styles.legendLabel}>Strong Negative (<-0.7)</Text>
+          <Text style={styles.legendLabel}>Strong Negative (&lt;-0.7)</Text>
         </View>
       </View>
 
