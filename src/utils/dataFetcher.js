@@ -3,6 +3,11 @@
 
 export class DataFetcher {
   constructor() {
+    // If USE_REAL_DATA env var is set the fetcher will try to load
+    // one year of daily quotes ending today from Yahoo Finance.
+    // Otherwise high quality mock data is generated. Real requests
+    // may require a proxy due to CORS restrictions when running in
+    // the browser.
     this.useRealData = process.env.USE_REAL_DATA === 'true';
   }
 
@@ -51,15 +56,14 @@ export class DataFetcher {
   }
 
   /**
-   * Real Yahoo Finance data (only works with backend proxy)
+   * Fetch last year's daily prices from Yahoo Finance.
+   * This requires a backend proxy to bypass CORS.
    */
   async fetchRealYahooData(symbol, period = '1y') {
     const now = Math.floor(Date.now() / 1000);
     const seconds = this.getPeriodSecondsForApi(period);
     const start = now - seconds;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${start}&period2=${now}&interval=1d`;
-    const range = period;
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Yahoo request failed: ${response.status}`);
