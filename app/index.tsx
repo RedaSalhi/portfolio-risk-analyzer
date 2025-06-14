@@ -10,7 +10,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { dataFetcher } from '../src/utils/dataFetcher';
+import { realTimeDataFetcher } from '../src/utils/realTimeDataFetcher';
 
 export default function HomeScreen() {
   const [marketData, setMarketData] = useState<any>(null);
@@ -23,8 +23,8 @@ export default function HomeScreen() {
   const loadMarketData = async () => {
     try {
       // Fetch some key market indicators
-      const spyData = await dataFetcher.fetchStockData('^GSPC', '1mo');
-      const vixData = await dataFetcher.fetchStockData('^VIX', '1mo');
+      const spyData = await realTimeDataFetcher.fetchStockData('^GSPC', '1mo');
+      const vixData = await realTimeDataFetcher.fetchStockData('^VIX', '1mo');
       
       setMarketData({
         spy: {
