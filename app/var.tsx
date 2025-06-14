@@ -175,74 +175,84 @@ export default function EnhancedVaRAnalyzer() {
       console.log(`📊 Analyzing ${minObservations} observations per asset`);
 
       // Step 3: Run VaR calculation based on method
-      let varResults;
-      let additionalMetrics = {};
-
-      console.log(`🎯 Running ${varMethod} VaR analysis...`);
-      
-      switch (varMethod) {
-        case 'parametric':
-          if (tickerList.length === 1) {
-            varResults = VaRCalculator.calculateParametricVaR(
-              returnsMatrix[0], confidenceLevel, positionSize * portfolioWeights[0]
-            );
-            additionalMetrics = {
-              mean: varResults.mean,
-              volatility: varResults.volatility,
-              zScore: varResults.zScore,
-              skewness: varResults.skewness,
-              kurtosis: varResults.kurtosis
-            };
-          } else {
-            varResults = VaRCalculator.calculatePortfolioVaR(
+      let optimizationResult;
+        console.log(`🎯 Running ${varMethod} optimization...`);
+        
+        switch (varMethod) {
+          case 'parametric':
+            if (tickerList.length === 1) {
+              varResults = VaRCalculator.calculateParametricVaR(
+                returnsMatrix[0], confidenceLevel, positionSize * portfolioWeights[0]
+              );
+              additionalMetrics = {
+                mean: varResults.mean,
+                volatility: varResults.volatility,
+                zScore: varResults.zScore,
+                skewness: varResults.skewness || 0,
+                kurtosis: varResults.kurtosis || 0
+              };
+            } else {
+              varResults = VaRCalculator.calculatePortfolioVaR(
+                returnsMatrix, portfolioWeights, confidenceLevel, positionSize
+              );
+              additionalMetrics = {
+                portfolioMean: varResults.portfolioMean,
+                portfolioVolatility: varResults.portfolioVolatility,
+                diversificationBenefit: varResults.diversificationBenefit
+              };
+            }
+            break;
+        
+          case 'historical':
+            varResults = VaRCalculator.calculateHistoricalVaR(
               returnsMatrix, portfolioWeights, confidenceLevel, positionSize
             );
             additionalMetrics = {
+              historicalObservations: varResults.observations,
+              percentileValue: varResults.percentileValue
+            };
+            break;
+        
+          case 'monteCarlo':
+            varResults = VaRCalculator.calculateMonteCarloVaR(
+              returnsMatrix, portfolioWeights, confidenceLevel, numSimulations, positionSize
+            );
+            additionalMetrics = {
+              numSimulations: numSimulations,
               portfolioMean: varResults.portfolioMean,
-              portfolioVolatility: varResults.portfolioVolatility,
+              portfolioVolatility: varResults.portfolioVolatility
+            };
+            break;
+        
+          case 'portfolio':
+          case 'componentVaR':
+            // CORRECTION MAJEURE : Passer les tickers pour Component VaR
+            varResults = VaRCalculator.calculatePortfolioVaR(
+              returnsMatrix, portfolioWeights, confidenceLevel, positionSize
+            );
+            
+            // CORRECTION : Calculer Component VaR avec les noms des tickers
+            if (varResults.componentVaR) {
+              const correctedComponentVaR = {};
+              Object.keys(varResults.componentVaR).forEach((key, index) => {
+                const tickerName = stockData.symbols[index] || `Asset_${index}`;
+                correctedComponentVaR[tickerName] = varResults.componentVaR[key];
+              });
+              varResults.componentVaR = correctedComponentVaR;
+            }
+            
+            additionalMetrics = {
+              componentVaR: varResults.componentVaR,
+              marginalVaR: varResults.marginalVaR,
               diversificationBenefit: varResults.diversificationBenefit
             };
-          }
-          break;
-
-        case 'historical':
-          varResults = VaRCalculator.calculateHistoricalVaR(
-            returnsMatrix, portfolioWeights, confidenceLevel, positionSize
-          );
-          additionalMetrics = {
-            historicalObservations: varResults.observations,
-            percentileValue: varResults.percentileValue
-          };
-          break;
-
-        case 'monteCarlo':
-          varResults = VaRCalculator.calculateMonteCarloVaR(
-            returnsMatrix, portfolioWeights, confidenceLevel, numSimulations, positionSize
-          );
-          additionalMetrics = {
-            numSimulations: numSimulations,
-            portfolioMean: varResults.portfolioMean,
-            portfolioVolatility: varResults.portfolioVolatility
-          };
-          break;
-
-        case 'portfolio':
-        case 'componentVaR':
-          varResults = VaRCalculator.calculatePortfolioVaR(
-            returnsMatrix, portfolioWeights, confidenceLevel, positionSize
-          );
-          additionalMetrics = {
-            componentVaR: varResults.componentVaR,
-            marginalVaR: varResults.marginalVaR,
-            diversificationBenefit: varResults.diversificationBenefit
-          };
-          break;
-
-        default:
-          varResults = VaRCalculator.calculateParametricVaR(
-            returnsMatrix[0], confidenceLevel, positionSize
-          );
-      }
+            break;
+        
+          default:
+            varResults = VaRCalculator.calculateParametricVaR(
+              returnsMatrix[0], confidenceLevel, positionSize
+            );
+        }
 
       console.log(`✅ ${varMethod} VaR calculated: $${varResults.var.toFixed(0)}`);
 
@@ -348,41 +358,69 @@ export default function EnhancedVaRAnalyzer() {
     return stressResults;
   };
 
-  const performBacktest = (returnsMatrix: number[][], weights: number[], varResults: any, confidenceLevel: number, positionSize: number) => {
-    try {
-      // Calculate portfolio returns
-      const portfolioReturns = [];
-      const minLength = Math.min(...returnsMatrix.map(r => r.length));
-      
-      for (let i = 0; i < minLength; i++) {
-        const portfolioReturn = returnsMatrix.reduce((sum, returns, assetIndex) => 
-          sum + weights[assetIndex] * returns[i], 0
-        );
-        portfolioReturns.push(portfolioReturn * positionSize);
-      }
-      
-      // Count exceedances
-      const varThreshold = -Math.abs(varResults.var);
-      const exceedances = portfolioReturns.filter(pnl => pnl < varThreshold).length;
-      const exceedanceRate = (exceedances / portfolioReturns.length) * 100;
-      const expectedRate = (1 - confidenceLevel) * 100;
-      
-      // Kupiec test statistic
-      const kupiecTest = VaRCalculator.calculateKupiecTest(exceedances, portfolioReturns.length, 1 - confidenceLevel);
-      
-      return {
-        exceedances: exceedances,
-        exceedanceRate: exceedanceRate,
-        expectedRate: expectedRate,
-        kupiecTest: kupiecTest,
-        totalObservations: portfolioReturns.length
-      };
-      
-    } catch (error) {
-      console.warn('Backtesting failed:', error.message);
-      return null;
+  const performBacktest = (returnsMatrix, weights, varResults, confidenceLevel, positionSize) => {
+  try {
+    // Calculate portfolio returns
+    const portfolioReturns = [];
+    const minLength = Math.min(...returnsMatrix.map(r => r.length));
+    
+    for (let i = 0; i < minLength; i++) {
+      const portfolioReturn = returnsMatrix.reduce((sum, returns, assetIndex) => 
+        sum + weights[assetIndex] * returns[i], 0
+      );
+      portfolioReturns.push(portfolioReturn * positionSize);
     }
-  };
+    
+    // Count exceedances (correct threshold)
+    const varThreshold = -Math.abs(varResults.var);
+    const exceedances = portfolioReturns.filter(pnl => pnl < varThreshold).length;
+    const exceedanceRate = (exceedances / portfolioReturns.length) * 100;
+    const expectedRate = (1 - confidenceLevel) * 100;
+    
+    // Improved Kupiec test calculation
+    let kupiecTest = 0;
+    if (portfolioReturns.length > 0 && exceedances >= 0) {
+      const p = 1 - confidenceLevel; // Expected exceedance rate
+      const n = portfolioReturns.length;
+      const x = exceedances;
+      
+      if (x === 0) {
+        // When no exceedances
+        kupiecTest = -2 * n * Math.log(1 - p);
+      } else if (x === n) {
+        // When all are exceedances  
+        kupiecTest = -2 * n * Math.log(p);
+      } else {
+        // Normal case
+        const pHat = x / n;
+        const likelihood1 = Math.pow(p, x) * Math.pow(1 - p, n - x);
+        const likelihood2 = Math.pow(pHat, x) * Math.pow(1 - pHat, n - x);
+        
+        if (likelihood1 > 0 && likelihood2 > 0) {
+          kupiecTest = -2 * Math.log(likelihood1 / likelihood2);
+        }
+      }
+    }
+    
+    return {
+      exceedances: exceedances,
+      exceedanceRate: exceedanceRate,
+      expectedRate: expectedRate,
+      kupiecTest: Math.max(0, kupiecTest), // Ensure non-negative
+      totalObservations: portfolioReturns.length
+    };
+    
+  } catch (error) {
+    console.warn('Backtesting failed:', error.message);
+    return {
+      exceedances: 0,
+      exceedanceRate: 0,
+      expectedRate: (1 - confidenceLevel) * 100,
+      kupiecTest: 0,
+      totalObservations: 0
+    };
+  }
+};
 
   const TabButton = ({ tabKey, label, icon }: { tabKey: string; label: string; icon: string }) => (
     <TouchableOpacity
@@ -683,28 +721,32 @@ export default function EnhancedVaRAnalyzer() {
               )}
 
               {activeTab === 'components' && results.componentVaR && (
-                <View>
-                  <Text style={styles.chartTitle}>Component VaR Analysis</Text>
-                  {results.tickers.map((ticker, index) => (
+              <View>
+                <Text style={styles.chartTitle}>Component VaR Analysis</Text>
+                {results.tickers.map((ticker, index) => {
+                  // CORRECTION : Obtenir la valeur Component VaR correcte
+                  const componentValue = results.componentVaR[ticker] || 0;
+                  const componentPercent = results.var95 > 0 ? (componentValue / results.var95) * 100 : 0;
+                  
+                  return (
                     <View key={ticker} style={styles.componentRow}>
                       <Text style={styles.componentTicker}>{ticker}</Text>
                       <View style={styles.componentMetrics}>
                         <Text style={styles.componentValue}>
-                          ${(results.componentVaR![ticker] / 1000 || 0).toFixed(1)}k
+                          ${(componentValue / 1000).toFixed(1)}k
                         </Text>
                         <Text style={styles.componentPercent}>
-                          {((results.componentVaR![ticker] / results.var95) * 100 || 0).toFixed(1)}%
+                          {componentPercent.toFixed(1)}%
                         </Text>
                       </View>
-                      {results.marginalVaR && (
+                      {results.marginalVaR && results.marginalVaR[index] && (
                         <Text style={styles.marginalValue}>
-                          Marginal: {(results.marginalVaR[ticker] || 0).toFixed(4)}
+                          Marginal: {results.marginalVaR[index].toFixed(3)}
                         </Text>
                       )}
                     </View>
-                  ))}
-                </View>
-              )}
+                  );
+                })}
 
               {activeTab === 'stress' && results.stressResults && results.stressResults.length > 0 && (
                 <View>
@@ -724,57 +766,64 @@ export default function EnhancedVaRAnalyzer() {
               )}
 
               {activeTab === 'backtest' && results.backtestResults && (
-                <View>
-                  <Text style={styles.chartTitle}>VaR Model Backtesting</Text>
-                  
-                  <View style={styles.backtestGrid}>
-                    <View style={styles.backtestItem}>
-                      <Text style={styles.backtestLabel}>Actual Exceedances</Text>
-                      <Text style={[styles.backtestValue, { 
-                        color: results.backtestResults.exceedanceRate > results.backtestResults.expectedRate * 1.5 ? '#E74C3C' : '#27AE60'
-                      }]}>
-                        {results.backtestResults.exceedances}
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.backtestItem}>
-                      <Text style={styles.backtestLabel}>Exceedance Rate</Text>
-                      <Text style={styles.backtestValue}>
-                        {results.backtestResults.exceedanceRate.toFixed(2)}%
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.backtestItem}>
-                      <Text style={styles.backtestLabel}>Expected Rate</Text>
-                      <Text style={styles.backtestValue}>
-                        {results.backtestResults.expectedRate.toFixed(2)}%
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.backtestItem}>
-                      <Text style={styles.backtestLabel}>Kupiec Test</Text>
-                      <Text style={[styles.backtestValue, { 
-                        color: results.backtestResults.kupiecTest > 3.84 ? '#E74C3C' : '#27AE60'
-                      }]}>
-                        {results.backtestResults.kupiecTest.toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.backtestInterpretation}>
-                    <Text style={styles.interpretationTitle}>Backtest Assessment</Text>
-                    <Text style={styles.interpretationText}>
-                      {results.backtestResults.kupiecTest <= 3.84 ? 
-                        '✅ Model passes Kupiec test - VaR estimates are statistically accurate' :
-                        '❌ Model fails Kupiec test - VaR may be underestimating risk'
-                      }
+              <View>
+                <Text style={styles.chartTitle}>VaR Model Backtesting</Text>
+                
+                <View style={styles.backtestGrid}>
+                  <View style={styles.backtestItem}>
+                    <Text style={styles.backtestLabel}>Actual Exceedances</Text>
+                    <Text style={[styles.backtestValue, { 
+                      color: results.backtestResults.exceedanceRate > results.backtestResults.expectedRate * 1.5 ? '#E74C3C' : '#27AE60'
+                    }]}>
+                      {results.backtestResults.exceedances}
                     </Text>
-                    <Text style={styles.interpretationText}>
-                      Critical value (95% confidence): 3.84
+                  </View>
+                  
+                  <View style={styles.backtestItem}>
+                    <Text style={styles.backtestLabel}>Exceedance Rate</Text>
+                    <Text style={styles.backtestValue}>
+                      {results.backtestResults.exceedanceRate.toFixed(3)}%
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.backtestItem}>
+                    <Text style={styles.backtestLabel}>Expected Rate</Text>
+                    <Text style={styles.backtestValue}>
+                      {results.backtestResults.expectedRate.toFixed(3)}%
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.backtestItem}>
+                    <Text style={styles.backtestLabel}>Kupiec Test</Text>
+                    <Text style={[styles.backtestValue, { 
+                      color: results.backtestResults.kupiecTest > 3.84 ? '#E74C3C' : '#27AE60'
+                    }]}>
+                      {results.backtestResults.kupiecTest.toFixed(3)}
                     </Text>
                   </View>
                 </View>
-              )}
+            
+                <View style={styles.backtestInterpretation}>
+                  <Text style={styles.interpretationTitle}>Backtest Assessment</Text>
+                  <Text style={styles.interpretationText}>
+                    {results.backtestResults.kupiecTest <= 3.84 ? 
+                      '✅ Model passes Kupiec test - VaR estimates are statistically accurate' :
+                      '❌ Model fails Kupiec test - VaR may be underestimating risk'
+                    }
+                  </Text>
+                  <Text style={styles.interpretationText}>
+                    Critical value (95% confidence): 3.84
+                  </Text>
+                  <Text style={styles.interpretationText}>
+                    Test statistic: {results.backtestResults.kupiecTest.toFixed(3)}
+                  </Text>
+                  <Text style={styles.interpretationText}>
+                    Observations: {results.backtestResults.totalObservations}
+                  </Text>
+                </View>
+              </View>
+            )}
+
 
               {activeTab === 'correlation' && results.correlationMatrix && (
                 <View>
