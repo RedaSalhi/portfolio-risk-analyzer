@@ -499,3 +499,4 @@ export class PortfolioOptimizer {
       type: 'target_volatility'
     } : this.optimizeMaxSharpe(numSamples);
   }
+}
