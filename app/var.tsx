@@ -1256,6 +1256,31 @@ const styles = StyleSheet.create({
     color: '#2C3E50',
     marginBottom: 8,
   },
+  validationBox: {
+  backgroundColor: '#F0F8FF',
+  padding: 15,
+  borderRadius: 8,
+  marginTop: 20,
+  borderLeftWidth: 4,
+  borderLeftColor: '#4A90E2',
+},
+validationTitle: {
+  fontSize: 16,
+  fontWeight: '600',
+  color: '#2C3E50',
+  marginBottom: 8,
+},
+validationText: {
+  fontSize: 14,
+  color: '#34495E',
+  marginBottom: 4,
+},
+validationWarning: {
+  fontSize: 14,
+  color: '#E74C3C',
+  fontWeight: '600',
+  marginTop: 8,
+},
   metadataText: {
     fontSize: 14,
     color: '#7F8C8D',
