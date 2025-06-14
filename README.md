@@ -1,66 +1,38 @@
-# Welcome to your Expo app 👋
+# Portfolio Risk Analyzer
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+This mobile app combines modern portfolio theory with Value-at-Risk analysis. It is built with **React Native** and [Expo](https://expo.dev).
 
-## Get started
+## Setup
 
-1. Install dependencies
-
+1. Install dependencies:
    ```bash
    npm install
    ```
-
-2. Start the app
-
+2. Copy `.env.example` to `.env.local` and fill in your API keys.
+3. Start the development server:
    ```bash
    npx expo start
    ```
 
-### Using real market data
+### Environment variables
 
-By default the application generates realistic mock prices so it works
-offline. If you want the app to download the last year of daily prices
-directly from Yahoo Finance set the `USE_REAL_DATA` environment
-variable when starting Expo:
+The app relies on the following environment variables:
 
-```bash
-USE_REAL_DATA=true npx expo start
-```
+- `USE_REAL_DATA` – set to `true` to download the last year of prices from Yahoo Finance instead of using mock data.
+- `ALPHAVANTAGE_API_KEY` – API key for [Alpha Vantage](https://www.alphavantage.co/). Required for real-time data fetching.
+- `IEX_API_KEY` – API key for [IEX Cloud](https://iexcloud.io/) used by the data fetcher.
 
-This pulls the most recent year of daily closing prices ending today so
-your analysis is always based on current market data. Fetching real
-data may require running behind a proxy server to avoid CORS issues on
-some platforms.
+Variables can be defined in an `.env.local` file or exported in your shell before running Expo.
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### Example `.env.local`
 
 ```bash
-npm run reset-project
+USE_REAL_DATA=true
+ALPHAVANTAGE_API_KEY=your_alpha_vantage_key
+IEX_API_KEY=your_iex_cloud_key
 ```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
 ## Learn more
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [Expo documentation](https://docs.expo.dev/)
+- [Expo community Discord](https://chat.expo.dev)
