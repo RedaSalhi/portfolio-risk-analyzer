@@ -175,7 +175,6 @@ export default function EnhancedVaRAnalyzer() {
       console.log(`📊 Analyzing ${minObservations} observations per asset`);
 
       // Step 3: Run VaR calculation based on method
-      let optimizationResult;
         console.log(`🎯 Running ${varMethod} optimization...`);
         
         switch (varMethod) {
