@@ -3,8 +3,12 @@
 
 export class DataFetcher {
   constructor() {
-    // Yahoo Finance has CORS issues, so we'll use mock data primarily
-    this.useRealData = false; // Set to true if you have a backend proxy
+    // If USE_REAL_DATA env var is set the fetcher will try to load
+    // one year of daily quotes ending today from Yahoo Finance.
+    // Otherwise high quality mock data is generated. Real requests
+    // may require a proxy due to CORS restrictions when running in
+    // the browser.
+    this.useRealData = process.env.USE_REAL_DATA === 'true';
   }
 
   /**
@@ -52,12 +56,60 @@ export class DataFetcher {
   }
 
   /**
-   * Real Yahoo Finance data (only works with backend proxy)
+   * Fetch last year's daily prices from Yahoo Finance.
+   * This requires a backend proxy to bypass CORS.
    */
   async fetchRealYahooData(symbol, period = '1y') {
-    // This would need a backend proxy to avoid CORS
-    // For now, we'll use mock data
-    throw new Error('CORS restrictions - using mock data');
+    const now = Math.floor(Date.now() / 1000);
+    const seconds = this.getPeriodSecondsForApi(period);
+    const start = now - seconds;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${start}&period2=${now}&interval=1d`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Yahoo request failed: ${response.status}`);
+    }
+    const json = await response.json();
+    const result = json?.chart?.result?.[0];
+    if (!result || !result.indicators?.quote?.[0]) {
+      throw new Error('Invalid data from Yahoo Finance');
+    }
+
+    const { timestamp } = result;
+    const quote = result.indicators.quote[0];
+    const data = [];
+    const returns = [];
+    let prevClose = null;
+    for (let i = 0; i < timestamp.length; i++) {
+      const price = quote.close[i];
+      if (price == null) continue;
+      const date = new Date(timestamp[i] * 1000);
+      data.push({
+        date,
+        open: quote.open[i],
+        high: quote.high[i],
+        low: quote.low[i],
+        close: price,
+        volume: quote.volume[i]
+      });
+      if (prevClose != null) {
+        returns.push({ date, return: (price - prevClose) / prevClose });
+      }
+      prevClose = price;
+    }
+
+    return {
+      symbol,
+      prices: data,
+      returns,
+      currentPrice: data[data.length - 1]?.close || 0,
+      metadata: {
+        start: data[0]?.date,
+        end: data[data.length - 1]?.date,
+        count: data.length,
+        isMock: false,
+        stockType: this.getStockParameters(symbol).type
+      }
+    };
   }
 
   /**
@@ -208,6 +260,22 @@ export class DataFetcher {
       '5y': 1260
     };
     return periods[period] || 252;
+  }
+
+  /**
+   * Convert a period string to seconds for Yahoo Finance API
+   */
+  getPeriodSecondsForApi(period) {
+    const daysMap = {
+      '1mo': 30,
+      '3mo': 90,
+      '6mo': 182,
+      '1y': 365,
+      '2y': 730,
+      '5y': 1825
+    };
+    const days = daysMap[period] || 365;
+    return days * 24 * 60 * 60;
   }
 
   /**
