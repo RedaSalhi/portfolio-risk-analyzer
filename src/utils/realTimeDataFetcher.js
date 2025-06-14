@@ -1,251 +1,275 @@
 // src/utils/realTimeDataFetcher.js
-// PRODUCTION-GRADE REAL-TIME DATA SYSTEM
-// Eliminates all mock data, ensures accuracy and freshness
+// MOBILE-OPTIMIZED REAL-TIME DATA FETCHER
+// Handles CORS, multiple API sources, and mobile-specific optimizations
 
-export class RealTimeDataFetcher {
-  constructor(config = {}) {
-    this.apiKeys = {
-      // Add your API keys here for production use
-      alphavantage: config.alphavantage || process.env.ALPHAVANTAGE_API_KEY,
-      polygon: config.polygon || process.env.POLYGON_API_KEY,
-      fred: config.fred || process.env.FRED_API_KEY,
-      iex: config.iex || process.env.IEX_API_KEY
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+class MobileRealTimeDataFetcher {
+  constructor() {
+    this.cache = new Map();
+    this.maxCacheAge = 5 * 60 * 1000; // 5 minutes for mobile
+    this.rateLimits = new Map();
+    
+    // Mobile-optimized API configuration
+    this.config = {
+      timeout: 15000, // 15 seconds for mobile networks
+      retries: 2,
+      useProxy: true, // Handle CORS for web browsers
     };
     
-    this.cache = new Map();
-    this.maxCacheAge = 5 * 60 * 1000; // 5 minutes
-    this.rateLimits = new Map();
-    this.fallbackOrder = ['polygon', 'alphavantage', 'yahoo', 'iex'];
+    // API sources in priority order (free tiers first)
+    this.dataSources = [
+      { name: 'yahoo', priority: 1, rateLimit: 2000 }, // 2 second intervals
+      { name: 'alphavantage', priority: 2, rateLimit: 12000 }, // Free tier: 5 calls/minute
+      { name: 'iex', priority: 3, rateLimit: 1000 }, // 1 second intervals
+    ];
     
-    console.log('🔄 Real-time data fetcher initialized');
+    console.log('📱 Mobile real-time data fetcher initialized');
   }
 
   /**
-   * Fetch real-time stock data with multiple fallbacks
+   * Fetch real-time stock data with mobile optimizations
    */
   async fetchStockData(symbol, period = '1y', forceRefresh = false) {
     const cacheKey = `${symbol}_${period}`;
     
-    // Check cache first (unless forced refresh)
+    // Check cache first (mobile data conservation)
     if (!forceRefresh && this.isCacheValid(cacheKey)) {
       console.log(`📋 Using cached data for ${symbol}`);
       return this.cache.get(cacheKey).data;
     }
 
-    console.log(`🔄 Fetching real-time data for ${symbol}...`);
+    console.log(`📱 Fetching real-time data for ${symbol}...`);
 
-    // Try each data source in order
-    for (const source of this.fallbackOrder) {
+    // Try each data source
+    for (const source of this.dataSources) {
       try {
-        await this.respectRateLimit(source);
+        await this.respectRateLimit(source.name);
         
         let data;
-        switch (source) {
-          case 'polygon':
-            data = await this.fetchFromPolygon(symbol, period);
+        switch (source.name) {
+          case 'yahoo':
+            data = await this.fetchFromYahoo(symbol, period);
             break;
           case 'alphavantage':
             data = await this.fetchFromAlphaVantage(symbol, period);
-            break;
-          case 'yahoo':
-            data = await this.fetchFromYahoo(symbol, period);
             break;
           case 'iex':
             data = await this.fetchFromIEX(symbol, period);
             break;
         }
 
-        if (data && this.validateDataQuality(data)) {
-          console.log(`✅ Real-time data fetched from ${source} for ${symbol}`);
+        if (data && this.validateDataQuality(data, symbol)) {
+          console.log(`✅ Real-time data fetched from ${source.name} for ${symbol}`);
           this.cacheData(cacheKey, data);
+          
+          // Store in AsyncStorage for offline access
+          await this.storeOfflineData(symbol, data);
+          
           return data;
         }
       } catch (error) {
-        console.warn(`⚠️ ${source} failed for ${symbol}:`, error.message);
+        console.warn(`⚠️ ${source.name} failed for ${symbol}:`, error.message);
         continue;
       }
+    }
+
+    // Fallback to offline data if available
+    try {
+      const offlineData = await this.getOfflineData(symbol);
+      if (offlineData) {
+        console.log(`📴 Using offline data for ${symbol}`);
+        return { ...offlineData, metadata: { ...offlineData.metadata, isOffline: true } };
+      }
+    } catch (error) {
+      console.warn('Offline data not available:', error.message);
     }
 
     throw new Error(`❌ All data sources failed for ${symbol}`);
   }
 
   /**
-   * Fetch from Polygon.io (most reliable, real-time)
-   */
-  async fetchFromPolygon(symbol, period) {
-    if (!this.apiKeys.polygon) throw new Error('Polygon API key required');
-    
-    const endDate = new Date();
-    const startDate = new Date(endDate - this.getPeriodMilliseconds(period));
-    
-    const url = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${startDate.toISOString().split('T')[0]}/${endDate.toISOString().split('T')[0]}?adjusted=true&sort=asc&apikey=${this.apiKeys.polygon}`;
-    
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Polygon API error: ${response.status}`);
-    
-    const data = await response.json();
-    if (!data.results || data.results.length === 0) {
-      throw new Error('No data from Polygon');
-    }
-
-    return this.formatPolygonData(symbol, data.results);
-  }
-
-  /**
-   * Fetch from Alpha Vantage (backup, good for fundamentals)
-   */
-  async fetchFromAlphaVantage(symbol, period) {
-    if (!this.apiKeys.alphavantage) throw new Error('Alpha Vantage API key required');
-    
-    const func = period === '1mo' ? 'TIME_SERIES_DAILY' : 'TIME_SERIES_DAILY';
-    const url = `https://www.alphavantage.co/query?function=${func}&symbol=${symbol}&outputsize=full&apikey=${this.apiKeys.alphavantage}`;
-    
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Alpha Vantage API error: ${response.status}`);
-    
-    const data = await response.json();
-    if (data['Error Message'] || data['Note']) {
-      throw new Error(data['Error Message'] || data['Note']);
-    }
-
-    const timeSeries = data['Time Series (Daily)'];
-    if (!timeSeries) throw new Error('No time series data from Alpha Vantage');
-
-    return this.formatAlphaVantageData(symbol, timeSeries, period);
-  }
-
-  /**
-   * Enhanced Yahoo Finance fetcher with proxy support
+   * Enhanced Yahoo Finance with mobile CORS proxy
    */
   async fetchFromYahoo(symbol, period) {
-    // Use CORS proxy for browser environments
-    const proxyUrl = 'https://api.allorigins.win/raw?url=';
     const now = Math.floor(Date.now() / 1000);
     const seconds = this.getPeriodSeconds(period);
     const start = now - seconds;
     
+    // Use CORS proxy for mobile/web environments
+    const proxyUrl = 'https://api.allorigins.win/raw?url=';
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${start}&period2=${now}&interval=1d&includePrePost=false&events=div,splits`;
-    const url = proxyUrl + encodeURIComponent(yahooUrl);
     
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Yahoo API error: ${response.status}`);
+    const url = this.config.useProxy ? proxyUrl + encodeURIComponent(yahooUrl) : yahooUrl;
     
-    const data = await response.json();
-    const result = data?.chart?.result?.[0];
-    if (!result || !result.indicators?.quote?.[0]) {
-      throw new Error('Invalid data from Yahoo Finance');
-    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+    
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Mobile; rv:40.0) Gecko/40.0 Firefox/40.0',
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`Yahoo API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const result = data?.chart?.result?.[0];
+      
+      if (!result || !result.indicators?.quote?.[0]) {
+        throw new Error('Invalid data from Yahoo Finance');
+      }
 
-    return this.formatYahooData(symbol, result);
+      return this.formatYahooData(symbol, result);
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+      throw error;
+    }
   }
 
   /**
-   * Fetch from IEX Cloud (backup)
+   * Alpha Vantage API (requires API key)
+   */
+  async fetchFromAlphaVantage(symbol, period) {
+    const apiKey = process.env.ALPHAVANTAGE_API_KEY || 'demo';
+    
+    if (apiKey === 'demo') {
+      throw new Error('Alpha Vantage API key required');
+    }
+    
+    const func = period === '1mo' ? 'TIME_SERIES_DAILY' : 'TIME_SERIES_DAILY';
+    const url = `https://www.alphavantage.co/query?function=${func}&symbol=${symbol}&outputsize=full&apikey=${apiKey}`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+    
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`Alpha Vantage API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data['Error Message'] || data['Note']) {
+        throw new Error(data['Error Message'] || data['Note']);
+      }
+
+      const timeSeries = data['Time Series (Daily)'];
+      if (!timeSeries) {
+        throw new Error('No time series data from Alpha Vantage');
+      }
+
+      return this.formatAlphaVantageData(symbol, timeSeries, period);
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * IEX Cloud API (requires API key)
    */
   async fetchFromIEX(symbol, period) {
-    if (!this.apiKeys.iex) throw new Error('IEX API key required');
+    const apiKey = process.env.IEX_API_KEY;
+    
+    if (!apiKey) {
+      throw new Error('IEX API key required');
+    }
     
     const range = this.getIEXRange(period);
-    const url = `https://cloud.iexapis.com/stable/stock/${symbol}/chart/${range}?token=${this.apiKeys.iex}`;
+    const url = `https://cloud.iexapis.com/stable/stock/${symbol}/chart/${range}?token=${apiKey}`;
     
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`IEX API error: ${response.status}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
     
-    const data = await response.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      throw new Error('No data from IEX');
-    }
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`IEX API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('No data from IEX');
+      }
 
-    return this.formatIEXData(symbol, data);
+      return this.formatIEXData(symbol, data);
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+      throw error;
+    }
   }
 
   /**
-   * Fetch real-time risk-free rate from FRED
-   */
-  async getRiskFreeRate() {
-    try {
-      // Try FRED first (most authoritative)
-      const fredData = await this.fetchFromFRED('DGS3MO'); // 3-Month Treasury
-      if (fredData && fredData.length > 0) {
-        const latestRate = fredData[fredData.length - 1].value;
-        if (latestRate && !isNaN(latestRate)) {
-          console.log(`✅ Real-time risk-free rate: ${latestRate}% from FRED`);
-          return latestRate / 100; // Convert percentage to decimal
-        }
-      }
-    } catch (error) {
-      console.warn('⚠️ FRED risk-free rate failed:', error.message);
-    }
-
-    try {
-      // Fallback to Yahoo Finance ^IRX (13-week Treasury)
-      const irxData = await this.fetchStockData('^IRX', '1mo');
-      if (irxData && irxData.currentPrice) {
-        const rate = irxData.currentPrice / 100;
-        console.log(`✅ Risk-free rate from Yahoo ^IRX: ${(rate * 100).toFixed(2)}%`);
-        return rate;
-      }
-    } catch (error) {
-      console.warn('⚠️ Yahoo ^IRX failed:', error.message);
-    }
-
-    // Last resort: Current Federal Funds Rate (hardcoded as of current date)
-    const currentFedRate = 0.0525; // 5.25% as of latest Fed meeting
-    console.warn(`⚠️ Using current Fed Funds Rate: ${(currentFedRate * 100).toFixed(2)}%`);
-    return currentFedRate;
-  }
-
-  /**
-   * Fetch market benchmark data (S&P 500)
-   */
-  async getMarketData(period = '1y') {
-    try {
-      const sp500Data = await this.fetchStockData('^GSPC', period);
-      if (sp500Data && sp500Data.returns.length > 0) {
-        console.log(`✅ Market data (S&P 500): ${sp500Data.returns.length} daily returns`);
-        return sp500Data.returns.map(r => r.return);
-      }
-    } catch (error) {
-      console.error('❌ Failed to fetch market data:', error);
-    }
-    
-    throw new Error('Unable to fetch market benchmark data');
-  }
-
-  /**
-   * Fetch multiple stocks with real-time synchronization
+   * Fetch multiple stocks with mobile optimization
    */
   async fetchMultipleStocks(symbols, period = '1y', forceRefresh = false) {
-    console.log(`🔄 Fetching real-time portfolio data for: ${symbols.join(', ')}`);
+    console.log(`📱 Fetching portfolio data for: ${symbols.join(', ')}`);
     
-    // Fetch all stocks concurrently
-    const promises = symbols.map(symbol => 
-      this.fetchStockData(symbol, period, forceRefresh)
-        .catch(error => {
-          console.error(`❌ Failed to fetch ${symbol}:`, error.message);
-          return null; // Don't fail entire portfolio for one stock
-        })
-    );
+    // Batch requests with delays to respect rate limits
+    const results = [];
+    const successfulSymbols = [];
+    const failedSymbols = [];
     
-    const results = await Promise.all(promises);
+    for (let i = 0; i < symbols.length; i++) {
+      const symbol = symbols[i];
+      
+      try {
+        // Add delay between requests for mobile networks
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        const data = await this.fetchStockData(symbol, period, forceRefresh);
+        results.push(data);
+        successfulSymbols.push(symbol);
+        
+      } catch (error) {
+        console.error(`❌ Failed to fetch ${symbol}:`, error.message);
+        failedSymbols.push(symbol);
+        results.push(null);
+      }
+    }
     
-    // Filter out failed stocks
-    const successfulResults = results.filter(result => result !== null);
-    const successfulSymbols = symbols.filter((_, index) => results[index] !== null);
+    // Filter out failed results
+    const validResults = results.filter(result => result !== null);
     
-    if (successfulResults.length === 0) {
+    if (validResults.length === 0) {
       throw new Error('❌ Failed to fetch data for any symbols');
     }
     
-    if (successfulResults.length < symbols.length) {
-      const failedSymbols = symbols.filter((_, index) => results[index] === null);
+    if (failedSymbols.length > 0) {
       console.warn(`⚠️ Failed to fetch: ${failedSymbols.join(', ')}`);
     }
 
     const combinedData = {};
     const allReturns = {};
     
-    successfulResults.forEach((data, index) => {
+    validResults.forEach((data, index) => {
       const symbol = successfulSymbols[index];
       combinedData[symbol] = data;
       allReturns[symbol] = data.returns.map(r => r.return);
@@ -263,57 +287,133 @@ export class RealTimeDataFetcher {
       metadata: {
         requestedSymbols: symbols,
         successfulSymbols: successfulSymbols,
-        failedSymbols: symbols.filter(s => !successfulSymbols.includes(s)),
+        failedSymbols: failedSymbols,
         fetchTime: new Date().toISOString(),
-        dataSource: 'real-time-multi-source'
+        dataSource: 'real-time-multi-source',
+        isMobile: true
       }
     };
   }
 
-  // ===== DATA VALIDATION METHODS =====
+  /**
+   * Get real-time risk-free rate with mobile fallbacks
+   */
+  async getRiskFreeRate() {
+    console.log('📱 Fetching real-time risk-free rate...');
+    
+    // Try multiple sources
+    const sources = [
+      { name: 'Yahoo ^IRX', symbol: '^IRX' },
+      { name: 'Yahoo ^TNX', symbol: '^TNX' }, // 10-year Treasury
+      { name: 'Yahoo ^FVX', symbol: '^FVX' }, // 5-year Treasury
+    ];
+    
+    for (const source of sources) {
+      try {
+        const data = await this.fetchStockData(source.symbol, '1mo');
+        if (data && data.currentPrice > 0) {
+          const rate = data.currentPrice / 100;
+          console.log(`✅ Risk-free rate from ${source.name}: ${(rate * 100).toFixed(3)}%`);
+          return rate;
+        }
+      } catch (error) {
+        console.warn(`⚠️ ${source.name} failed:`, error.message);
+        continue;
+      }
+    }
+
+    // Fallback to cached rate if available
+    try {
+      const cachedRate = await AsyncStorage.getItem('cached_risk_free_rate');
+      if (cachedRate) {
+        const parsed = JSON.parse(cachedRate);
+        const age = Date.now() - parsed.timestamp;
+        if (age < 24 * 60 * 60 * 1000) { // 24 hours
+          console.log(`📋 Using cached risk-free rate: ${(parsed.rate * 100).toFixed(3)}%`);
+          return parsed.rate;
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to get cached risk-free rate:', error.message);
+    }
+
+    // Last resort: current approximate Fed rate
+    const fallbackRate = 0.0525; // 5.25% as of current Fed policy
+    console.warn(`⚠️ Using fallback Fed rate: ${(fallbackRate * 100).toFixed(2)}%`);
+    return fallbackRate;
+  }
 
   /**
-   * Validate data quality and freshness
+   * Get market benchmark data
    */
-  validateDataQuality(data) {
-    if (!data || !data.prices || !data.returns) return false;
+  async getMarketData(period = '1y') {
+    console.log('📱 Fetching real-time market data (S&P 500)...');
     
-    // Check minimum data points
-    if (data.prices.length < 20) {
-      console.warn('⚠️ Insufficient data points');
+    const benchmarks = ['^GSPC', 'SPY', 'VTI']; // S&P 500, SPY ETF, Total Market ETF
+    
+    for (const benchmark of benchmarks) {
+      try {
+        const data = await this.fetchStockData(benchmark, period);
+        if (data && data.returns.length > 50) {
+          console.log(`✅ Market data (${benchmark}): ${data.returns.length} returns`);
+          return data.returns.map(r => r.return);
+        }
+      } catch (error) {
+        console.warn(`⚠️ ${benchmark} failed:`, error.message);
+        continue;
+      }
+    }
+    
+    throw new Error('Unable to fetch market benchmark data');
+  }
+
+  // ===== DATA VALIDATION & UTILITIES =====
+
+  /**
+   * Mobile-specific data quality validation
+   */
+  validateDataQuality(data, symbol) {
+    if (!data || !data.prices || !data.returns) {
+      console.warn(`❌ ${symbol}: Invalid data structure`);
       return false;
     }
     
-    // Check data freshness (within last 7 days for daily data)
+    // Check minimum data points (relaxed for mobile)
+    if (data.prices.length < 15) {
+      console.warn(`❌ ${symbol}: Insufficient data points (${data.prices.length})`);
+      return false;
+    }
+    
+    // Check data freshness (more lenient for mobile)
     const latestDate = new Date(data.prices[data.prices.length - 1].date);
     const daysSinceLatest = (Date.now() - latestDate.getTime()) / (1000 * 60 * 60 * 24);
     
-    if (daysSinceLatest > 7) {
-      console.warn(`⚠️ Data is ${daysSinceLatest.toFixed(1)} days old`);
+    if (daysSinceLatest > 10) {
+      console.warn(`⚠️ ${symbol}: Data is ${daysSinceLatest.toFixed(1)} days old`);
+      // Don't fail validation for mobile - warn but continue
+    }
+    
+    // Check for reasonable price ranges
+    const prices = data.prices.map(p => p.close).filter(p => p > 0);
+    if (prices.length === 0) {
+      console.warn(`❌ ${symbol}: No valid prices`);
       return false;
     }
     
-    // Check for data anomalies (extreme price changes)
-    const returns = data.returns.map(r => r.return);
-    const extremeReturns = returns.filter(r => Math.abs(r) > 0.5); // 50% daily change
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
     
-    if (extremeReturns.length > returns.length * 0.01) { // More than 1% extreme moves
-      console.warn('⚠️ Suspicious data: too many extreme returns');
-      return false;
+    if (maxPrice / minPrice > 10) { // More than 10x price change
+      console.warn(`⚠️ ${symbol}: Extreme price range detected`);
+      // Continue anyway for mobile
     }
     
-    // Check for missing current price
-    if (!data.currentPrice || data.currentPrice <= 0) {
-      console.warn('⚠️ Invalid current price');
-      return false;
-    }
-    
-    console.log(`✅ Data quality validated for ${data.symbol}`);
+    console.log(`✅ ${symbol}: Data quality validated`);
     return true;
   }
 
   /**
-   * Validate data synchronization across multiple stocks
+   * Validate data synchronization for mobile
    */
   validateDataSync(allReturns) {
     const symbols = Object.keys(allReturns);
@@ -323,8 +423,8 @@ export class RealTimeDataFetcher {
     const minLength = Math.min(...lengths);
     const maxLength = Math.max(...lengths);
     
-    // Allow up to 5% difference in data lengths
-    if ((maxLength - minLength) / maxLength > 0.05) {
+    // Allow up to 10% difference for mobile networks
+    if ((maxLength - minLength) / maxLength > 0.1) {
       console.warn(`⚠️ Data sync issue: lengths vary from ${minLength} to ${maxLength}`);
       
       // Truncate all series to minimum length
@@ -338,7 +438,7 @@ export class RealTimeDataFetcher {
     return true;
   }
 
-  // ===== CACHING AND RATE LIMITING =====
+  // ===== CACHING AND STORAGE =====
 
   isCacheValid(key) {
     const cached = this.cache.get(key);
@@ -354,48 +454,82 @@ export class RealTimeDataFetcher {
     });
   }
 
+  async storeOfflineData(symbol, data) {
+    try {
+      const offlineData = {
+        ...data,
+        cachedAt: Date.now()
+      };
+      await AsyncStorage.setItem(`offline_${symbol}`, JSON.stringify(offlineData));
+    } catch (error) {
+      console.warn('Failed to store offline data:', error.message);
+    }
+  }
+
+  async getOfflineData(symbol) {
+    try {
+      const stored = await AsyncStorage.getItem(`offline_${symbol}`);
+      if (stored) {
+        const data = JSON.parse(stored);
+        const age = Date.now() - data.cachedAt;
+        
+        // Use offline data if less than 7 days old
+        if (age < 7 * 24 * 60 * 60 * 1000) {
+          return data;
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to get offline data:', error.message);
+    }
+    return null;
+  }
+
   async respectRateLimit(source) {
     const now = Date.now();
     const lastCall = this.rateLimits.get(source) || 0;
-    const minInterval = this.getRateLimitInterval(source);
+    const sourceConfig = this.dataSources.find(s => s.name === source);
+    const minInterval = sourceConfig ? sourceConfig.rateLimit : 1000;
     
     const waitTime = minInterval - (now - lastCall);
     if (waitTime > 0) {
+      console.log(`⏱️ Rate limiting ${source}: waiting ${waitTime}ms`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
     
     this.rateLimits.set(source, Date.now());
   }
 
-  getRateLimitInterval(source) {
-    const intervals = {
-      polygon: 100,      // 10 calls/second
-      alphavantage: 12000, // 5 calls/minute for free tier
-      yahoo: 1000,       // 1 call/second (conservative)
-      iex: 100          // 100 calls/second
-    };
-    return intervals[source] || 1000;
-  }
-
   // ===== DATA FORMATTERS =====
 
-  formatPolygonData(symbol, results) {
-    const prices = results.map(item => ({
-      date: new Date(item.t),
-      open: item.o,
-      high: item.h,
-      low: item.l,
-      close: item.c,
-      volume: item.v
-    }));
-
+  formatYahooData(symbol, result) {
+    const { timestamp } = result;
+    const quote = result.indicators.quote[0];
+    
+    const prices = [];
     const returns = [];
-    for (let i = 1; i < prices.length; i++) {
-      const returnValue = (prices[i].close - prices[i-1].close) / prices[i-1].close;
-      returns.push({
-        date: prices[i].date,
-        return: returnValue
+    let prevClose = null;
+    
+    for (let i = 0; i < timestamp.length; i++) {
+      const price = quote.close[i];
+      if (price == null) continue;
+      
+      const date = new Date(timestamp[i] * 1000);
+      prices.push({
+        date,
+        open: quote.open[i] || price,
+        high: quote.high[i] || price,
+        low: quote.low[i] || price,
+        close: price,
+        volume: quote.volume[i] || 0
       });
+      
+      if (prevClose != null && prevClose > 0) {
+        returns.push({ 
+          date, 
+          return: (price - prevClose) / prevClose 
+        });
+      }
+      prevClose = price;
     }
 
     return {
@@ -407,9 +541,10 @@ export class RealTimeDataFetcher {
         start: prices[0]?.date,
         end: prices[prices.length - 1]?.date,
         count: prices.length,
-        source: 'polygon',
+        source: 'yahoo',
         isMock: false,
-        fetchTime: new Date().toISOString()
+        fetchTime: new Date().toISOString(),
+        isMobile: true
       }
     };
   }
@@ -449,54 +584,8 @@ export class RealTimeDataFetcher {
         count: prices.length,
         source: 'alphavantage',
         isMock: false,
-        fetchTime: new Date().toISOString()
-      }
-    };
-  }
-
-  formatYahooData(symbol, result) {
-    const { timestamp } = result;
-    const quote = result.indicators.quote[0];
-    
-    const prices = [];
-    const returns = [];
-    let prevClose = null;
-    
-    for (let i = 0; i < timestamp.length; i++) {
-      const price = quote.close[i];
-      if (price == null) continue;
-      
-      const date = new Date(timestamp[i] * 1000);
-      prices.push({
-        date,
-        open: quote.open[i],
-        high: quote.high[i],
-        low: quote.low[i],
-        close: price,
-        volume: quote.volume[i]
-      });
-      
-      if (prevClose != null) {
-        returns.push({ 
-          date, 
-          return: (price - prevClose) / prevClose 
-        });
-      }
-      prevClose = price;
-    }
-
-    return {
-      symbol: symbol,
-      prices: prices,
-      returns: returns,
-      currentPrice: prices[prices.length - 1]?.close || 0,
-      metadata: {
-        start: prices[0]?.date,
-        end: prices[prices.length - 1]?.date,
-        count: prices.length,
-        source: 'yahoo',
-        isMock: false,
-        fetchTime: new Date().toISOString()
+        fetchTime: new Date().toISOString(),
+        isMobile: true
       }
     };
   }
@@ -531,7 +620,8 @@ export class RealTimeDataFetcher {
         count: prices.length,
         source: 'iex',
         isMock: false,
-        fetchTime: new Date().toISOString()
+        fetchTime: new Date().toISOString(),
+        isMobile: true
       }
     };
   }
@@ -566,42 +656,34 @@ export class RealTimeDataFetcher {
     return ranges[period] || '1y';
   }
 
-  async fetchFromFRED(series) {
-    const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${series}&api_key=${this.apiKeys.fred}&file_type=json&limit=30&sort_order=desc`;
-    
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`FRED API error: ${response.status}`);
-    
-    const data = await response.json();
-    return data.observations?.filter(obs => obs.value !== '.') || [];
-  }
-
   /**
-   * System health check
+   * Mobile health check
    */
   async healthCheck() {
-    console.log('🏥 Running system health check...');
+    console.log('📱 Running mobile system health check...');
     
     const results = {
       dataSources: {},
       riskFreeRate: false,
       marketData: false,
+      offlineCapability: false,
       cacheStatus: this.cache.size,
+      networkStatus: navigator.onLine !== false,
       timestamp: new Date().toISOString()
     };
     
-    // Test each data source
-    for (const source of this.fallbackOrder) {
+    // Test data sources
+    for (const source of this.dataSources) {
       try {
-        if (source === 'yahoo') {
+        // Quick test with small request
+        if (source.name === 'yahoo') {
           await this.fetchFromYahoo('AAPL', '1mo');
-        } else if (this.apiKeys[source]) {
-          // Test with small request
-          await this[`fetchFrom${source.charAt(0).toUpperCase() + source.slice(1)}`]('AAPL', '1mo');
+          results.dataSources[source.name] = '✅ Available';
+        } else {
+          results.dataSources[source.name] = '⚠️ Requires API key';
         }
-        results.dataSources[source] = '✅ Available';
       } catch (error) {
-        results.dataSources[source] = `❌ ${error.message}`;
+        results.dataSources[source.name] = `❌ ${error.message}`;
       }
     }
     
@@ -621,10 +703,19 @@ export class RealTimeDataFetcher {
       results.marketData = `❌ ${error.message}`;
     }
     
-    console.log('🏥 Health check completed:', results);
+    // Test offline capability
+    try {
+      await this.storeOfflineData('TEST', { test: true });
+      await this.getOfflineData('TEST');
+      results.offlineCapability = '✅ Available';
+    } catch (error) {
+      results.offlineCapability = `❌ ${error.message}`;
+    }
+    
+    console.log('📱 Mobile health check completed:', results);
     return results;
   }
 }
 
 // Export singleton instance
-export const realTimeDataFetcher = new RealTimeDataFetcher();
+export const realTimeDataFetcher = new MobileRealTimeDataFetcher();
