@@ -470,4 +470,33 @@ export class PortfolioOptimizer {
       type: 'target_return'
     } : this.optimizeMaxSharpe(numSamples);
   }
+
+  /**
+   * For target volatility optimization (simplified)
+   */
+  optimizeForTargetVolatility(targetVolatility, numSamples) {
+    let smallestDiff = Infinity;
+    let optimalWeights = null;
+    let bestMetrics = null;
+
+    for (let i = 0; i < numSamples; i++) {
+      const weights = this.generateRandomWeights();
+      const metrics = this.calculatePortfolioMetrics(weights);
+
+      const diff = Math.abs(metrics.volatility - targetVolatility);
+      if (diff < smallestDiff) {
+        smallestDiff = diff;
+        optimalWeights = [...weights];
+        bestMetrics = metrics;
+      }
+    }
+
+    return optimalWeights ? {
+      weights: optimalWeights,
+      expectedReturn: bestMetrics.expectedReturn,
+      volatility: bestMetrics.volatility,
+      sharpeRatio: bestMetrics.sharpeRatio,
+      type: 'target_volatility'
+    } : this.optimizeMaxSharpe(numSamples);
+  }
 }
