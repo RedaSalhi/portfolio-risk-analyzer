@@ -524,18 +524,50 @@ export default function EnhancedPortfolioOptimizer() {
                 </View>
               )}
 
-              {activeTab === 'capm' && Object.keys(results.capmReturns).length > 0 && (
-                <View>
-                  <CAPMAnalysisChart
-                    capmReturns={results.capmReturns}
-                    betas={results.betas}
-                    alphas={results.alphas}
-                    tickers={results.tickers}
-                    marketReturn={results.metadata.marketReturn}
-                    riskFreeRate={results.metadata.riskFreeRate}
-                  />
-                </View>
-              )}
+              // CORRECTION pour le formatage .3f - Dans la section CAPM:
+
+                {activeTab === 'capm' && Object.keys(results.capmReturns).length > 0 && (
+                  <View>
+                    <CAPMAnalysisChart
+                      capmReturns={results.campReturns}
+                      betas={results.betas}
+                      alphas={results.alphas}
+                      tickers={results.tickers}
+                      marketReturn={results.metadata.marketReturn}
+                      riskFreeRate={results.metadata.riskFreeRate}
+                    />
+                    
+                    {/* Table CAPM avec formatage .3f */}
+                    <View style={styles.capmTable}>
+                      <View style={styles.capmHeader}>
+                        <Text style={[styles.campHeaderText, { flex: 2 }]}>Asset</Text>
+                        <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Beta</Text>
+                        <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Alpha</Text>
+                        <Text style={[styles.capmHeaderText, { flex: 2 }]}>Expected Return</Text>
+                      </View>
+                      
+                      {results.tickers.map((ticker, index) => (
+                        <View key={ticker} style={styles.capmRow}>
+                          <Text style={[styles.capmCellText, { flex: 2, fontWeight: '600' }]}>
+                            {ticker}
+                          </Text>
+                          <Text style={[styles.capmCellText, { flex: 1.5 }]}>
+                            {(results.betas[ticker] || 0).toFixed(3)}
+                          </Text>
+                          <Text style={[styles.capmCellText, { 
+                            flex: 1.5,
+                            color: (results.alphas[ticker] || 0) > 0 ? '#27AE60' : '#E74C3C'
+                          }]}>
+                            {((results.alphas[ticker] || 0) * 100).toFixed(3)}%
+                          </Text>
+                          <Text style={[styles.capmCellText, { flex: 2 }]}>
+                            {((results.capmReturns[ticker] || 0) * 100).toFixed(3)}%
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
 
               {activeTab === 'risk' && results.riskAttribution && (
                 <View>
