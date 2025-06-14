@@ -78,7 +78,7 @@ export class DataFetcher {
       const date = new Date(Date.now() - (days - i) * 24 * 60 * 60 * 1000);
       
       // Generate realistic return using stock-specific parameters
-      const return_ = this.generateRealisticReturn(stockParams, i, days);
+      const return_ = this.generateRealisticReturn(stockParams, i, days, currentPrice);
       currentPrice = currentPrice * (1 + return_);
       
       // Ensure price stays positive
@@ -159,7 +159,7 @@ export class DataFetcher {
   /**
    * Generate realistic returns with proper patterns
    */
-  generateRealisticReturn(params, dayIndex, totalDays) {
+  generateRealisticReturn(params, dayIndex, totalDays, currentPrice) {
     const { dailyVol, drift } = params;
     
     // Base random return
@@ -178,7 +178,7 @@ export class DataFetcher {
     // Special behavior for VIX (mean-reverting)
     if (params.type === 'volatility') {
       const meanVix = 18;
-      const currentLevel = params.startPrice; // Simplified
+      const currentLevel = currentPrice !== undefined ? currentPrice : params.startPrice;
       if (currentLevel > 25) return_ -= 0.05; // High VIX tends to fall
       if (currentLevel < 12) return_ += 0.05; // Low VIX tends to rise
     }
