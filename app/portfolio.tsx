@@ -529,7 +529,7 @@ export default function EnhancedPortfolioOptimizer() {
                 {activeTab === 'capm' && Object.keys(results.capmReturns).length > 0 && (
                   <View>
                     <CAPMAnalysisChart
-                      capmReturns={results.campReturns}
+                      capmReturns={results.capmReturns}
                       betas={results.betas}
                       alphas={results.alphas}
                       tickers={results.tickers}
@@ -540,7 +540,7 @@ export default function EnhancedPortfolioOptimizer() {
                     {/* Table CAPM avec formatage .3f */}
                     <View style={styles.capmTable}>
                       <View style={styles.capmHeader}>
-                        <Text style={[styles.campHeaderText, { flex: 2 }]}>Asset</Text>
+                        <Text style={[styles.capmHeaderText, { flex: 2 }]}>Asset</Text>
                         <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Beta</Text>
                         <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Alpha</Text>
                         <Text style={[styles.capmHeaderText, { flex: 2 }]}>Expected Return</Text>
@@ -881,6 +881,12 @@ const styles = StyleSheet.create({
     color: '#7F8C8D',
     textAlign: 'right',
     flex: 1,
+  },
+  capmHeaderText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#2C3E50',
+    textAlign: 'center',
   },
   chartTitle: {
     fontSize: 18,
