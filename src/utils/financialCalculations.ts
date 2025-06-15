@@ -455,9 +455,9 @@ export class PortfolioOptimizer {
 // FIXED: VaR Calculator with proper error handling
 export class VaRCalculator {
   static calculatePortfolioVaR(
-    returnsMatrix: number[][], 
-    weights: number[], 
-    confidenceLevel: number = 0.95, 
+    returnsMatrix: number[][],
+    weights: number[],
+    confidenceLevel: number = 0.95,
     portfolioValue: number = 1000000
   ): any {
     try {
@@ -491,6 +491,254 @@ export class VaRCalculator {
     } catch (error) {
       throw new Error(`VaR calculation failed: ${error.message}`);
     }
+  }
+
+  static calculateIndividualParametricVaR(
+    returns: number[],
+    ticker: string,
+    confidenceLevel: number,
+    positionSize: number
+  ): any {
+    const cleaned = this.removeOutliers(returns, 'modified_zscore');
+    const dataQuality = {
+      originalObservations: returns.length,
+      cleanedObservations: cleaned.length,
+      outliersRemoved: returns.length - cleaned.length,
+    };
+
+    const mu = mean(cleaned);
+    const sigma = standardDeviation(cleaned);
+    const skew = cleaned.reduce((s, r) => s + Math.pow(r - mu, 3), 0) / cleaned.length / Math.pow(sigma || 1, 3);
+    const kurt =
+      cleaned.reduce((s, r) => s + Math.pow(r - mu, 4), 0) / cleaned.length / Math.pow(sigma || 1, 4) - 3;
+
+    const z = this.normInv(1 - confidenceLevel);
+    let zAdj = z;
+    if (isFinite(skew) && isFinite(kurt)) {
+      zAdj =
+        z +
+        ((z * z - 1) * skew) / 6 +
+        ((z * z * z - 3 * z) * kurt) / 24 -
+        ((2 * z * z * z - 5 * z) * skew * skew) / 36;
+      if (!isFinite(zAdj) || Math.abs(zAdj - z) > 3) {
+        zAdj = z; // Fallback for extreme values
+      }
+    }
+
+    const varValue = Math.abs(mu + zAdj * sigma) * positionSize;
+    const sorted = cleaned.slice().sort((a, b) => a - b);
+    const idx = Math.floor((1 - confidenceLevel) * sorted.length);
+    const es = idx > 0 ? Math.abs(mean(sorted.slice(0, idx))) * positionSize : varValue;
+
+    return {
+      ticker: ticker,
+      var: varValue,
+      expectedShortfall: es,
+      volatility: sigma,
+      mean: mu,
+      skewness: skew,
+      kurtosis: kurt,
+      cornishFisherAdjustment: zAdj - z,
+      method: 'parametric',
+      dataQuality,
+    };
+  }
+
+  static calculateIndividualHistoricalVaR(
+    returns: number[],
+    ticker: string,
+    confidenceLevel: number,
+    positionSize: number
+  ): any {
+    const cleaned = this.removeOutliers(returns, 'modified_zscore');
+    const sorted = cleaned.slice().sort((a, b) => a - b);
+    const idx = Math.floor((1 - confidenceLevel) * sorted.length);
+    const varValue = Math.abs(sorted[idx]) * positionSize;
+    const es = idx > 0 ? Math.abs(mean(sorted.slice(0, idx))) * positionSize : varValue;
+
+    return {
+      ticker: ticker,
+      var: varValue,
+      expectedShortfall: es,
+      volatility: standardDeviation(cleaned),
+      mean: mean(cleaned),
+      method: 'historical',
+    };
+  }
+
+  static calculatePortfolioHistoricalVaR(
+    returnsMatrix: number[][],
+    weights: number[],
+    confidenceLevel: number,
+    positionSize: number
+  ): any {
+    const portfolioReturns = this.calculatePortfolioReturns(returnsMatrix, weights);
+    const cleaned = portfolioReturns.filter(r => !isNaN(r) && isFinite(r));
+    const sorted = cleaned.slice().sort((a, b) => a - b);
+    const idx = Math.floor((1 - confidenceLevel) * sorted.length);
+    const varValue = Math.abs(sorted[idx]) * positionSize;
+    const es = idx > 0 ? Math.abs(mean(sorted.slice(0, idx))) * positionSize : varValue;
+
+    return {
+      var: varValue,
+      expectedShortfall: es,
+      portfolioMean: mean(cleaned),
+      portfolioVolatility: standardDeviation(cleaned),
+      method: 'historical',
+    };
+  }
+
+  static calculateMonteCarloVaR(
+    returnsMatrix: number[][],
+    weights: number[],
+    confidenceLevel: number,
+    simulations: number,
+    positionSize: number
+  ): any {
+    const means = returnsMatrix.map(r => mean(r));
+    const cov: number[][] = returnsMatrix.map((ri, i) =>
+      returnsMatrix.map((rj, j) => covariance(ri, rj))
+    );
+    const portfolioMean = weights.reduce((s, w, i) => s + w * means[i], 0);
+    let portVar = 0;
+    for (let i = 0; i < weights.length; i++) {
+      for (let j = 0; j < weights.length; j++) {
+        portVar += weights[i] * weights[j] * cov[i][j];
+      }
+    }
+    const portStd = Math.sqrt(portVar);
+
+    const simulated: number[] = [];
+    for (let k = 0; k < simulations; k++) {
+      const z = this.normInv(Math.random());
+      simulated.push(portfolioMean + portStd * z);
+    }
+    const sorted = simulated.sort((a, b) => a - b);
+    const idx = Math.floor((1 - confidenceLevel) * sorted.length);
+    const varValue = Math.abs(sorted[idx]) * positionSize;
+    const es = idx > 0 ? Math.abs(mean(sorted.slice(0, idx))) * positionSize : varValue;
+
+    return {
+      var: varValue,
+      expectedShortfall: es,
+      portfolioMean,
+      portfolioVolatility: portStd,
+      method: 'monte_carlo',
+    };
+  }
+
+  static calculateKupiecTest(
+    numViolations: number,
+    totalObs: number,
+    alpha: number
+  ): number {
+    if (totalObs === 0) return 0;
+    const p = numViolations / totalObs;
+    if (p === 0 || p === 1) return 0;
+    const term1 = Math.pow(1 - alpha, totalObs - numViolations) * Math.pow(alpha, numViolations);
+    const term2 = Math.pow(1 - p, totalObs - numViolations) * Math.pow(p, numViolations);
+    const lr = -2 * Math.log(term1 / term2);
+    return lr;
+  }
+
+  static calculateRobustCorrelationMatrix(returnsMatrix: number[][]): number[][] {
+    const n = returnsMatrix.length;
+    const matrix: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
+
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        if (i === j) {
+          matrix[i][j] = 1;
+        } else {
+          let corr = covariance(returnsMatrix[i], returnsMatrix[j]) /
+            (standardDeviation(returnsMatrix[i]) * standardDeviation(returnsMatrix[j]));
+          if (!isFinite(corr)) corr = 0;
+          matrix[i][j] = Math.max(-0.99, Math.min(0.99, corr));
+        }
+      }
+    }
+
+    // Ensure symmetry
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const avg = (matrix[i][j] + matrix[j][i]) / 2;
+        matrix[i][j] = matrix[j][i] = avg;
+      }
+    }
+
+    return matrix;
+  }
+
+  static removeOutliers(
+    data: number[],
+    method: string = 'modified_zscore',
+    threshold: number = 3.5
+  ): number[] {
+    if (data.length === 0) return [];
+    if (method === 'modified_zscore') {
+      const median = data.slice().sort((a, b) => a - b)[Math.floor(data.length / 2)];
+      const mad =
+        data.map(x => Math.abs(x - median)).sort((a, b) => a - b)[Math.floor(data.length / 2)] || 0;
+      if (mad === 0) return [...data];
+      return data.filter(x => (0.6745 * (x - median)) / mad <= threshold && (0.6745 * (x - median)) / mad >= -threshold);
+    }
+
+    // Standard z-score method
+    const mu = mean(data);
+    const sigma = standardDeviation(data);
+    if (sigma === 0) return [...data];
+    return data.filter(x => Math.abs((x - mu) / sigma) <= threshold);
+  }
+
+  private static normInv(p: number): number {
+    // Beasley-Springer/Moro approximation
+    if (p <= 0 || p >= 1) {
+      return NaN;
+    }
+    const a1 = -39.6968302866538;
+    const a2 = 220.946098424521;
+    const a3 = -275.928510446969;
+    const a4 = 138.357751867269;
+    const a5 = -30.6647980661472;
+    const a6 = 2.50662827745924;
+    const b1 = -54.4760987982241;
+    const b2 = 161.585836858041;
+    const b3 = -155.698979859887;
+    const b4 = 66.8013118877197;
+    const b5 = -13.2806815528857;
+    const c1 = -0.00778489400243029;
+    const c2 = -0.322396458041136;
+    const c3 = -2.40075827716184;
+    const c4 = -2.54973253934373;
+    const c5 = 4.37466414146497;
+    const c6 = 2.93816398269878;
+    const d1 = 0.00778469570904146;
+    const d2 = 0.32246712907004;
+    const d3 = 2.445134137143;
+    const d4 = 3.75440866190742;
+    const plow = 0.02425;
+    const phigh = 1 - plow;
+    let q: number, r: number;
+    if (p < plow) {
+      q = Math.sqrt(-2 * Math.log(p));
+      return (
+        (((((c1 * q + c2) * q + c3) * q + c4) * q + c5) * q + c6) /
+        ((((d1 * q + d2) * q + d3) * q + d4) * q + 1)
+      );
+    }
+    if (phigh < p) {
+      q = Math.sqrt(-2 * Math.log(1 - p));
+      return -(
+        ((((c1 * q + c2) * q + c3) * q + c4) * q + c5) * q + c6) /
+        ((((d1 * q + d2) * q + d3) * q + d4) * q + 1)
+      );
+    }
+    q = p - 0.5;
+    r = q * q;
+    return (
+      (((((a1 * r + a2) * r + a3) * r + a4) * r + a5) * r + a6) * q /
+      (((((b1 * r + b2) * r + b3) * r + b4) * r + b5) * r + 1)
+    );
   }
 
   private static calculatePortfolioReturns(returnsMatrix: number[][], weights: number[]): number[] {
