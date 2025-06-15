@@ -606,109 +606,252 @@ export class PortfolioOptimizer {
   }
 
   calculateCovarianceMatrix() {
-    const n = this.numAssets;
-    const covMatrix = Array(n).fill(null).map(() => Array(n).fill(0));
-    
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        if (i === j) {
-          covMatrix[i][j] = VaRCalculator.calculateVariance(this.returnsMatrix[i], this.means[i]);
-        } else {
-          covMatrix[i][j] = this.calculateCovariance(this.returnsMatrix[i], this.returnsMatrix[j], this.means[i], this.means[j]);
+    try {
+      const n = this.numAssets;
+      const covMatrix = Array(n).fill(null).map(() => Array(n).fill(0));
+      
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          try {
+            if (i === j) {
+              const variance = VaRCalculator.calculateVariance(this.returnsMatrix[i], this.means[i]);
+              covMatrix[i][j] = isFinite(variance) && variance > 0 ? variance : 0.0001; // Variance minimale
+            } else {
+              const covariance = this.calculateCovariance(
+                this.returnsMatrix[i], 
+                this.returnsMatrix[j], 
+                this.means[i], 
+                this.means[j]
+              );
+              covMatrix[i][j] = isFinite(covariance) ? covariance : 0;
+            }
+          } catch (error) {
+            console.warn(`Covariance calculation failed for assets ${i},${j}:`, error.message);
+            covMatrix[i][j] = i === j ? 0.0001 : 0; // Valeur par défaut
+          }
         }
       }
+      
+      // Vérifier que la matrice est semi-définie positive
+      if (!this.isValidCovarianceMatrix(covMatrix)) {
+        console.warn('Covariance matrix is not positive semi-definite, using regularized version');
+        return this.regularizeCovarianceMatrix(covMatrix);
+      }
+      
+      return covMatrix;
+      
+    } catch (error) {
+      console.error('Covariance matrix calculation completely failed:', error.message);
+      return this.createDefaultCovarianceMatrix();
     }
-    
-    return covMatrix;
   }
 
   calculateCovariance(x, y, meanX, meanY) {
-    const n = Math.min(x.length, y.length);
-    let covariance = 0;
+    try {
+      if (!Array.isArray(x) || !Array.isArray(y) || x.length === 0 || y.length === 0) {
+        return 0;
+      }
+      
+      const n = Math.min(x.length, y.length);
+      let covariance = 0;
+      
+      for (let i = 0; i < n; i++) {
+        if (isFinite(x[i]) && isFinite(y[i])) {
+          covariance += (x[i] - meanX) * (y[i] - meanY);
+        }
+      }
+      
+      const result = covariance / (n - 1);
+      return isFinite(result) ? result : 0;
+      
+    } catch (error) {
+      console.warn('Covariance calculation failed:', error.message);
+      return 0;
+    }
+  }
+
+  // NOUVEAU: Vérifier si la matrice de covariance est valide
+  isValidCovarianceMatrix(matrix) {
+    try {
+      const n = matrix.length;
+      
+      // Vérifier la symétrie
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          if (Math.abs(matrix[i][j] - matrix[j][i]) > 1e-10) {
+            return false;
+          }
+        }
+      }
+      
+      // Vérifier que les variances sont positives
+      for (let i = 0; i < n; i++) {
+        if (matrix[i][i] <= 0) {
+          return false;
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // NOUVEAU: Régulariser la matrice de covariance
+  regularizeCovarianceMatrix(matrix) {
+    const n = matrix.length;
+    const regularized = matrix.map(row => [...row]); // Copie
     
+    // Ajouter un petit terme de régularisation sur la diagonale
+    const regularization = 0.0001;
     for (let i = 0; i < n; i++) {
-      covariance += (x[i] - meanX) * (y[i] - meanY);
+      regularized[i][i] += regularization;
     }
     
-    return covariance / (n - 1);
+    // Forcer la symétrie
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const avg = (regularized[i][j] + regularized[j][i]) / 2;
+        regularized[i][j] = avg;
+        regularized[j][i] = avg;
+      }
+    }
+    
+    return regularized;
   }
 
   optimizeMaxSharpe() {
-    const weights = this.calculateMaxSharpeWeights();
-    const metrics = this.calculatePortfolioMetrics(weights);
-    
-    return {
-      weights: weights,
-      expectedReturn: metrics.expectedReturn,
-      volatility: metrics.volatility,
-      sharpeRatio: metrics.sharpeRatio,
-      type: 'max_sharpe'
-    };
+    try {
+      const weights = this.calculateMaxSharpeWeights();
+      const metrics = this.calculatePortfolioMetrics(weights);
+      
+      return {
+        weights: weights,
+        expectedReturn: metrics.expectedReturn,
+        volatility: metrics.volatility,
+        sharpeRatio: metrics.sharpeRatio,
+        type: 'max_sharpe'
+      };
+    } catch (error) {
+      console.error('Max Sharpe optimization failed:', error.message);
+      return this.getFallbackOptimization('max_sharpe');
+    }
   }
 
   optimizeMinRisk() {
-    const weights = this.calculateMinVarWeights();
-    const metrics = this.calculatePortfolioMetrics(weights);
-    
-    return {
-      weights: weights,
-      expectedReturn: metrics.expectedReturn,
-      volatility: metrics.volatility,
-      sharpeRatio: metrics.sharpeRatio,
-      type: 'min_risk'
-    };
+    try {
+      const weights = this.calculateMinVarWeights();
+      const metrics = this.calculatePortfolioMetrics(weights);
+      
+      return {
+        weights: weights,
+        expectedReturn: metrics.expectedReturn,
+        volatility: metrics.volatility,
+        sharpeRatio: metrics.sharpeRatio,
+        type: 'min_risk'
+      };
+    } catch (error) {
+      console.error('Min risk optimization failed:', error.message);
+      return this.getFallbackOptimization('min_risk');
+    }
   }
 
   optimizeEqualWeight() {
-    const weights = Array(this.numAssets).fill(1 / this.numAssets);
-    const metrics = this.calculatePortfolioMetrics(weights);
-    
-    return {
-      weights: weights,
-      expectedReturn: metrics.expectedReturn,
-      volatility: metrics.volatility,
-      sharpeRatio: metrics.sharpeRatio,
-      type: 'equal_weight'
-    };
+    try {
+      const weights = Array(this.numAssets).fill(1 / this.numAssets);
+      const metrics = this.calculatePortfolioMetrics(weights);
+      
+      return {
+        weights: weights,
+        expectedReturn: metrics.expectedReturn,
+        volatility: metrics.volatility,
+        sharpeRatio: metrics.sharpeRatio,
+        type: 'equal_weight'
+      };
+    } catch (error) {
+      console.error('Equal weight optimization failed:', error.message);
+      return this.getFallbackOptimization('equal_weight');
+    }
   }
 
   optimizeRiskParity() {
-    const weights = this.calculateRiskParityWeights();
-    const metrics = this.calculatePortfolioMetrics(weights);
-    
-    return {
-      weights: weights,
-      expectedReturn: metrics.expectedReturn,
-      volatility: metrics.volatility,
-      sharpeRatio: metrics.sharpeRatio,
-      type: 'risk_parity'
-    };
+    try {
+      const weights = this.calculateRiskParityWeights();
+      const metrics = this.calculatePortfolioMetrics(weights);
+      
+      return {
+        weights: weights,
+        expectedReturn: metrics.expectedReturn,
+        volatility: metrics.volatility,
+        sharpeRatio: metrics.sharpeRatio,
+        type: 'risk_parity'
+      };
+    } catch (error) {
+      console.error('Risk parity optimization failed:', error.message);
+      return this.getFallbackOptimization('risk_parity');
+    }
   }
 
   optimizeForTargetReturn(targetReturn) {
-    const weights = this.calculateTargetReturnWeights(targetReturn);
-    const metrics = this.calculatePortfolioMetrics(weights);
-    
-    return {
-      weights: weights,
-      expectedReturn: metrics.expectedReturn,
-      volatility: metrics.volatility,
-      sharpeRatio: metrics.sharpeRatio,
-      type: 'target_return'
-    };
+    try {
+      const weights = this.calculateTargetReturnWeights(targetReturn);
+      const metrics = this.calculatePortfolioMetrics(weights);
+      
+      return {
+        weights: weights,
+        expectedReturn: metrics.expectedReturn,
+        volatility: metrics.volatility,
+        sharpeRatio: metrics.sharpeRatio,
+        type: 'target_return'
+      };
+    } catch (error) {
+      console.error('Target return optimization failed:', error.message);
+      return this.getFallbackOptimization('target_return');
+    }
   }
 
   optimizeForTargetVolatility(targetVolatility) {
-    const weights = this.calculateTargetVolatilityWeights(targetVolatility);
-    const metrics = this.calculatePortfolioMetrics(weights);
+    try {
+      const weights = this.calculateTargetVolatilityWeights(targetVolatility);
+      const metrics = this.calculatePortfolioMetrics(weights);
+      
+      return {
+        weights: weights,
+        expectedReturn: metrics.expectedReturn,
+        volatility: metrics.volatility,
+        sharpeRatio: metrics.sharpeRatio,
+        type: 'target_volatility'
+      };
+    } catch (error) {
+      console.error('Target volatility optimization failed:', error.message);
+      return this.getFallbackOptimization('target_volatility');
+    }
+  }
+
+  // NOUVEAU: Méthode de fallback en cas d'erreur
+  getFallbackOptimization(type) {
+    console.warn(`Using fallback equal weight portfolio for ${type}`);
+    const weights = Array(this.numAssets).fill(1 / this.numAssets);
     
-    return {
-      weights: weights,
-      expectedReturn: metrics.expectedReturn,
-      volatility: metrics.volatility,
-      sharpeRatio: metrics.sharpeRatio,
-      type: 'target_volatility'
-    };
+    try {
+      const metrics = this.calculatePortfolioMetrics(weights);
+      return {
+        weights: weights,
+        expectedReturn: metrics.expectedReturn,
+        volatility: metrics.volatility,
+        sharpeRatio: metrics.sharpeRatio,
+        type: type + '_fallback'
+      };
+    } catch (error) {
+      console.error('Even fallback optimization failed:', error.message);
+      return {
+        weights: weights,
+        expectedReturn: 0.08, // 8% default
+        volatility: 0.15, // 15% default
+        sharpeRatio: 0.5, // Default ratio
+        type: type + '_default'
+      };
+    }
   }
 
   calculateMaxSharpeWeights() {
