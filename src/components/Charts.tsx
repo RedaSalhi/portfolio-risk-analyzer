@@ -1,516 +1,559 @@
-// src/components/Charts.tsx - ENHANCED MOBILE CHART COMPONENTS
-// Professional visualizations optimized for mobile devices
+// src/components/Charts.tsx
+// ENHANCED WITH SOPHISTICATED MARKOWITZ & CAPM VISUALIZATIONS
 
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
-import { PieChart, LineChart, BarChart } from 'react-native-chart-kit';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { VictoryChart, VictoryScatter, VictoryPie, VictoryArea, VictoryAxis, 
+         VictoryLine, VictoryLabel, VictoryTheme, VictoryContainer, VictoryTooltip } from 'victory-native';
 
-const { width: screenWidth } = Dimensions.get('window');
-const chartWidth = screenWidth - 40;
+const { width } = Dimensions.get('window');
+const chartWidth = width - 40;
+const chartHeight = 280;
 
-// Chart configuration for consistent styling
-const chartConfig = {
-  backgroundColor: '#ffffff',
-  backgroundGradientFrom: '#ffffff',
-  backgroundGradientTo: '#ffffff',
-  decimalPlaces: 2,
-  color: (opacity = 1) => `rgba(74, 144, 226, ${opacity})`,
-  labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
-  style: {
-    borderRadius: 12,
-  },
-  propsForDots: {
-    r: '4',
-    strokeWidth: '2',
-    stroke: '#4A90E2'
-  },
-  propsForBackgroundLines: {
-    strokeWidth: 1,
-    stroke: '#E0E0E0',
-    strokeDasharray: '5,5'
-  }
+interface EfficientFrontierProps {
+  efficientFrontier: Array<{
+    expectedReturn: number;
+    volatility: number;
+    sharpeRatio: number;
+  }>;
+  optimalPortfolio: {
+    expectedReturn: number;
+    volatility: number;
+    sharpeRatio: number;
+  };
+  allSimulations?: Array<{
+    expectedReturn: number;
+    volatility: number;
+    sharpeRatio: number;
+  }>;
+  riskFreeRate: number;
+  showCapitalMarketLine?: boolean;
+}
+
+export const EfficientFrontierChart: React.FC<EfficientFrontierProps> = ({
+  efficientFrontier,
+  optimalPortfolio,
+  allSimulations = [],
+  riskFreeRate,
+  showCapitalMarketLine = true
+}) => {
+  // Prepare data for Monte Carlo simulations (background scatter)
+  const simulationData = allSimulations.slice(0, 2000).map(point => ({
+    x: point.volatility * 100, // Convert to percentage
+    y: point.expectedReturn * 100,
+    sharpe: point.sharpeRatio,
+    fill: getSharpeRatioColor(point.sharpeRatio)
+  }));
+
+  // Prepare efficient frontier line data
+  const frontierData = efficientFrontier.map(point => ({
+    x: point.volatility * 100,
+    y: point.expectedReturn * 100,
+    sharpe: point.sharpeRatio
+  }));
+
+  // Optimal portfolio point
+  const optimalPoint = {
+    x: optimalPortfolio.volatility * 100,
+    y: optimalPortfolio.expectedReturn * 100,
+    sharpe: optimalPortfolio.sharpeRatio
+  };
+
+  // Capital Market Line (CML) data
+  const cmlData = showCapitalMarketLine ? generateCapitalMarketLine(
+    riskFreeRate * 100,
+    optimalPoint.x,
+    optimalPoint.y
+  ) : [];
+
+  return (
+    <View style={styles.chartContainer}>
+      <Text style={styles.chartTitle}>Efficient Frontier & Portfolio Optimization</Text>
+      <Text style={styles.chartSubtitle}>
+        Monte Carlo Simulation ({allSimulations.length.toLocaleString()} portfolios)
+      </Text>
+      
+      <VictoryChart
+        theme={VictoryTheme.material}
+        width={chartWidth}
+        height={chartHeight}
+        padding={{ left: 80, top: 20, right: 60, bottom: 80 }}
+        containerComponent={<VictoryContainer responsive={false} />}
+      >
+        {/* Monte Carlo simulation points */}
+        {simulationData.length > 0 && (
+          <VictoryScatter
+            data={simulationData}
+            size={1.5}
+            style={{
+              data: { fill: ({ datum }) => datum.fill, fillOpacity: 0.6 }
+            }}
+          />
+        )}
+
+        {/* Efficient Frontier Line */}
+        <VictoryLine
+          data={frontierData}
+          style={{
+            data: { stroke: "#1f4e79", strokeWidth: 3 }
+          }}
+          interpolation="cardinal"
+        />
+
+        {/* Capital Market Line */}
+        {showCapitalMarketLine && cmlData.length > 0 && (
+          <VictoryLine
+            data={cmlData}
+            style={{
+              data: { stroke: "#ff6b35", strokeWidth: 2, strokeDasharray: "5,5" }
+            }}
+          />
+        )}
+
+        {/* Optimal Portfolio Point */}
+        <VictoryScatter
+          data={[optimalPoint]}
+          size={8}
+          style={{
+            data: { fill: "#e63946", stroke: "#ffffff", strokeWidth: 2 }
+          }}
+          labelComponent={
+            <VictoryTooltip
+              flyoutStyle={{ fill: "white", stroke: "#1f4e79" }}
+              style={{ fontSize: 12, fill: "#1f4e79" }}
+            />
+          }
+          labels={({ datum }) => 
+            `Optimal Portfolio\nReturn: ${datum.y.toFixed(2)}%\nRisk: ${datum.x.toFixed(2)}%\nSharpe: ${datum.sharpe.toFixed(3)}`
+          }
+        />
+
+        {/* Risk-free rate point */}
+        <VictoryScatter
+          data={[{ x: 0, y: riskFreeRate * 100 }]}
+          size={6}
+          style={{
+            data: { fill: "#2a9d8f", stroke: "#ffffff", strokeWidth: 2 }
+          }}
+          labelComponent={
+            <VictoryLabel
+              dx={15}
+              style={{ fontSize: 10, fill: "#2a9d8f", fontWeight: "bold" }}
+            />
+          }
+          labels={() => `Risk-Free\n${(riskFreeRate * 100).toFixed(2)}%`}
+        />
+
+        <VictoryAxis
+          dependentAxis
+          tickFormat={(x) => `${x.toFixed(1)}%`}
+          style={{
+            tickLabels: { fontSize: 12, fill: "#444" },
+            axis: { stroke: "#666" },
+            grid: { stroke: "#e0e0e0", strokeDasharray: "2,2" }
+          }}
+        />
+        
+        <VictoryAxis
+          tickFormat={(x) => `${x.toFixed(1)}%`}
+          style={{
+            tickLabels: { fontSize: 12, fill: "#444" },
+            axis: { stroke: "#666" },
+            grid: { stroke: "#e0e0e0", strokeDasharray: "2,2" }
+          }}
+        />
+      </VictoryChart>
+
+      <View style={styles.legend}>
+        <View style={styles.legendRow}>
+          <View style={[styles.legendColor, { backgroundColor: '#1f4e79' }]} />
+          <Text style={styles.legendText}>Efficient Frontier</Text>
+        </View>
+        <View style={styles.legendRow}>
+          <View style={[styles.legendColor, { backgroundColor: '#e63946' }]} />
+          <Text style={styles.legendText}>Optimal Portfolio</Text>
+        </View>
+        {showCapitalMarketLine && (
+          <View style={styles.legendRow}>
+            <View style={[styles.legendColor, { backgroundColor: '#ff6b35', height: 2 }]} />
+            <Text style={styles.legendText}>Capital Market Line</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
 };
 
-// Enhanced color palette for better mobile visibility
-const colors = [
-  '#4A90E2', // Blue
-  '#50C878', // Green  
-  '#FF6B6B', // Red
-  '#FFD93D', // Yellow
-  '#9B59B6', // Purple
-  '#F39C12', // Orange
-  '#1ABC9C', // Teal
-  '#E74C3C', // Dark Red
-  '#3498DB', // Light Blue
-  '#2ECC71', // Light Green
-  '#F1C40F', // Gold
-  '#E67E22', // Dark Orange
-  '#9C88FF', // Lavender
-  '#FF8C94', // Pink
-  '#45B7D1', // Sky Blue
-];
-
-interface PortfolioWeightsChartProps {
+interface PortfolioWeightsProps {
   weights: number[];
   tickers: string[];
-  title: string;
+  title?: string;
 }
 
-export const PortfolioWeightsChart: React.FC<PortfolioWeightsChartProps> = ({
+export const PortfolioWeightsChart: React.FC<PortfolioWeightsProps> = ({
   weights,
   tickers,
-  title
+  title = "Optimal Portfolio Allocation"
 }) => {
-  // Prepare data for pie chart
-  const pieData = weights.map((weight, index) => ({
-    name: tickers[index],
-    population: weight * 100,
-    color: colors[index % colors.length],
-    legendFontColor: '#2C3E50',
-    legendFontSize: 12,
-  })).filter(item => item.population > 0.5); // Filter out very small weights
+  const data = weights.map((weight, index) => ({
+    x: tickers[index] || `Asset ${index + 1}`,
+    y: weight * 100,
+    label: `${tickers[index]}\n${(weight * 100).toFixed(1)}%`
+  }));
+
+  const colorScale = [
+    "#1f4e79", "#2a9d8f", "#e9c46a", "#f4a261", "#e63946",
+    "#264653", "#2a9d8f", "#e76f51", "#6a994e", "#bc6c25"
+  ];
 
   return (
     <View style={styles.chartContainer}>
       <Text style={styles.chartTitle}>{title}</Text>
+      <Text style={styles.chartSubtitle}>Asset Weight Distribution</Text>
       
-      {pieData.length > 0 ? (
-        <>
-          <PieChart
-            data={pieData}
-            width={chartWidth}
-            height={250}
-            chartConfig={chartConfig}
-            accessor="population"
-            backgroundColor="transparent"
-            paddingLeft="15"
-            center={[10, 0]}
-            hasLegend={false} // We'll create custom legend
-          />
-          
-          {/* Custom Legend */}
-          <ScrollView style={styles.legend} showsVerticalScrollIndicator={false}>
-            {pieData.map((item, index) => (
-              <View key={item.name} style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: item.color }]} />
-                <Text style={styles.legendText}>
-                  {item.name}: {item.population.toFixed(1)}%
-                </Text>
-              </View>
-            ))}
-          </ScrollView>
-        </>
-      ) : (
-        <View style={styles.noDataContainer}>
-          <Text style={styles.noDataText}>No significant positions to display</Text>
-        </View>
-      )}
-    </View>
-  );
-};
-
-interface EfficientFrontierChartProps {
-  frontierData: Array<{return: number, risk: number, sharpe: number}>;
-  currentPortfolio: {return: number, risk: number, sharpe: number};
-  title: string;
-}
-
-export const EfficientFrontierChart: React.FC<EfficientFrontierChartProps> = ({
-  frontierData,
-  currentPortfolio,
-  title
-}) => {
-  if (!frontierData || frontierData.length === 0) {
-    return (
-      <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>{title}</Text>
-        <View style={styles.noDataContainer}>
-          <Text style={styles.noDataText}>Efficient frontier data not available</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // Prepare data for line chart
-  const chartData = {
-    labels: frontierData.map((_, index) => 
-      index % Math.floor(frontierData.length / 5) === 0 ? 
-      `${(frontierData[index].risk * 100).toFixed(0)}%` : ''
-    ),
-    datasets: [
-      {
-        data: frontierData.map(point => point.return * 100),
-        color: (opacity = 1) => `rgba(74, 144, 226, ${opacity})`,
-        strokeWidth: 3,
-      }
-    ]
-  };
-
-  return (
-    <View style={styles.chartContainer}>
-      <Text style={styles.chartTitle}>{title}</Text>
-      
-      <LineChart
-        data={chartData}
+      <VictoryPie
+        data={data}
         width={chartWidth}
-        height={250}
-        chartConfig={{
-          ...chartConfig,
-          color: (opacity = 1) => `rgba(74, 144, 226, ${opacity})`,
+        height={chartHeight}
+        colorScale={colorScale}
+        innerRadius={60}
+        padAngle={2}
+        labelRadius={({ innerRadius }) => innerRadius + 80}
+        style={{
+          labels: { fontSize: 12, fill: "#333", fontWeight: "600" }
         }}
-        bezier
-        style={styles.chart}
-        yAxisSuffix="%"
-        xAxisLabel="Risk →"
-        yAxisLabel="Return ↑"
+        labelComponent={
+          <VictoryLabel
+            style={[
+              { fill: "#333", fontSize: 11, fontWeight: "600" },
+              { fill: "#666", fontSize: 10 }
+            ]}
+          />
+        }
       />
       
-      {/* Current Portfolio Indicator */}
-      <View style={styles.portfolioIndicator}>
-        <View style={styles.indicatorRow}>
-          <View style={[styles.indicatorDot, { backgroundColor: '#E74C3C' }]} />
-          <Text style={styles.indicatorText}>
-            Current Portfolio: {(currentPortfolio.return * 100).toFixed(2)}% return, 
-            {(currentPortfolio.risk * 100).toFixed(2)}% risk
-          </Text>
-        </View>
-        <Text style={styles.indicatorSubtext}>
-          Sharpe Ratio: {currentPortfolio.sharpe.toFixed(3)}
+      <View style={styles.pieCenter}>
+        <Text style={styles.pieCenterText}>Portfolio</Text>
+        <Text style={styles.pieCenterSubtext}>{tickers.length} Assets</Text>
+      </View>
+    </View>
+  );
+};
+
+interface CapitalAllocationProps {
+  riskyWeight: number;
+  riskFreeWeight: number;
+  tangencyWeights: number[];
+  tickers: string[];
+  targetReturn?: number;
+  targetVolatility?: number;
+}
+
+export const CapitalAllocationChart: React.FC<CapitalAllocationProps> = ({
+  riskyWeight,
+  riskFreeWeight,
+  tangencyWeights,
+  tickers,
+  targetReturn,
+  targetVolatility
+}) => {
+  // Prepare data with risk-free asset and individual risky assets
+  const data = [
+    {
+      x: "Risk-Free Asset",
+      y: riskFreeWeight * 100,
+      label: `Risk-Free\n${(riskFreeWeight * 100).toFixed(1)}%`
+    },
+    ...tangencyWeights.map((weight, index) => ({
+      x: tickers[index] || `Asset ${index + 1}`,
+      y: (riskyWeight * weight * 100),
+      label: `${tickers[index]}\n${(riskyWeight * weight * 100).toFixed(1)}%`
+    }))
+  ].filter(item => item.y > 0.1); // Filter out very small allocations
+
+  const colorScale = ["#2a9d8f", "#1f4e79", "#e9c46a", "#f4a261", "#e63946", "#264653"];
+
+  return (
+    <View style={styles.chartContainer}>
+      <Text style={styles.chartTitle}>Capital Allocation</Text>
+      <Text style={styles.chartSubtitle}>
+        {riskyWeight > 1 ? `Leveraged Portfolio (${(riskyWeight * 100).toFixed(0)}% in risky assets)` : 
+         riskFreeWeight > 0 ? "Risk-Free + Risky Assets" : "100% Risky Assets"}
+      </Text>
+      
+      <VictoryPie
+        data={data}
+        width={chartWidth}
+        height={chartHeight}
+        colorScale={colorScale}
+        innerRadius={50}
+        padAngle={3}
+        labelRadius={({ innerRadius }) => innerRadius + 70}
+        style={{
+          labels: { fontSize: 11, fill: "#333", fontWeight: "600" }
+        }}
+      />
+
+      <View style={styles.pieCenter}>
+        <Text style={styles.pieCenterText}>
+          {targetReturn ? `${(targetReturn * 100).toFixed(1)}%` : 
+           targetVolatility ? `${(targetVolatility * 100).toFixed(1)}%` : "Optimal"}
+        </Text>
+        <Text style={styles.pieCenterSubtext}>
+          {targetReturn ? "Target Return" : targetVolatility ? "Target Risk" : "Max Sharpe"}
         </Text>
       </View>
     </View>
   );
 };
 
-interface CAPMAnalysisChartProps {
-  capmReturns: { [key: string]: number };
-  betas: { [key: string]: number };
-  alphas: { [key: string]: number };
-  tickers: string[];
-  marketReturn: number;
+interface CAPMAnalysisProps {
+  capmData: {
+    [ticker: string]: {
+      alpha: number;
+      beta: number;
+      capmExpectedReturn: number;
+      rSquared: number;
+    };
+  };
   riskFreeRate: number;
+  marketReturn: number;
 }
 
-export const CAPMAnalysisChart: React.FC<CAPMAnalysisChartProps> = ({
-  capmReturns,
-  betas,
-  alphas,
-  tickers,
-  marketReturn,
-  riskFreeRate
+export const CAPMAnalysisChart: React.FC<CAPMAnalysisProps> = ({
+  capmData,
+  riskFreeRate,
+  marketReturn
 }) => {
-  if (!capmReturns || Object.keys(capmReturns).length === 0) {
-    return (
-      <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>CAPM Analysis</Text>
-        <View style={styles.noDataContainer}>
-          <Text style={styles.noDataText}>Market benchmark data required for CAPM analysis</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // Prepare beta chart data
-  const betaData = {
-    labels: tickers.map(ticker => ticker.length > 4 ? ticker.substring(0, 4) : ticker),
-    datasets: [{
-      data: tickers.map(ticker => betas[ticker] || 0),
-      color: (opacity = 1) => `rgba(74, 144, 226, ${opacity})`,
-      strokeWidth: 2,
-    }]
-  };
+  const tickers = Object.keys(capmData);
+  
+  // Prepare data for beta visualization
+  const betaData = tickers.map((ticker, index) => ({
+    x: index + 1,
+    y: capmData[ticker].beta,
+    label: ticker,
+    alpha: capmData[ticker].alpha,
+    rSquared: capmData[ticker].rSquared
+  }));
 
   return (
-    <ScrollView style={styles.chartContainer} showsVerticalScrollIndicator={false}>
+    <View style={styles.chartContainer}>
       <Text style={styles.chartTitle}>CAPM Analysis</Text>
+      <Text style={styles.chartSubtitle}>Beta & Alpha vs Market Benchmark</Text>
       
-      {/* Market Information */}
-      <View style={styles.capmInfo}>
-        <Text style={styles.capmInfoTitle}>Market Environment</Text>
-        <Text style={styles.capmInfoText}>
-          Risk-free rate: {(riskFreeRate * 100).toFixed(3)}%
-        </Text>
-        <Text style={styles.capmInfoText}>
-          Market return: {(marketReturn * 100).toFixed(2)}%
-        </Text>
-        <Text style={styles.capmInfoText}>
-          Market risk premium: {((marketReturn - riskFreeRate) * 100).toFixed(2)}%
-        </Text>
-      </View>
-
-      {/* Beta Chart */}
-      <Text style={styles.subChartTitle}>Beta Coefficients</Text>
-      <BarChart
-        data={betaData}
+      <VictoryChart
+        theme={VictoryTheme.material}
         width={chartWidth}
-        height={200}
-        chartConfig={chartConfig}
-        style={styles.chart}
-        yAxisSuffix=""
-        showValuesOnTopOfBars={true}
-      />
+        height={chartHeight}
+        padding={{ left: 80, top: 20, right: 60, bottom: 80 }}
+      >
+        {/* Beta = 1 reference line */}
+        <VictoryLine
+          data={[{ x: 0, y: 1 }, { x: tickers.length + 1, y: 1 }]}
+          style={{
+            data: { stroke: "#666", strokeWidth: 1, strokeDasharray: "3,3" }
+          }}
+        />
 
-      {/* Beta Reference Line */}
-    <View style={styles.betaReference}>
-      <Text style={styles.referenceText}>
-        {'Beta = 1.0 (Market Risk) • Beta > 1.0 (Higher Risk) • Beta < 1.0 (Lower Risk)'}
-      </Text>
-    </View>
+        {/* Beta bars */}
+        <VictoryScatter
+          data={betaData}
+          size={({ datum }) => Math.abs(datum.alpha) * 1000 + 5} // Size based on alpha magnitude
+          style={{
+            data: { 
+              fill: ({ datum }) => datum.alpha > 0 ? "#2a9d8f" : "#e63946",
+              fillOpacity: ({ datum }) => datum.rSquared,
+              stroke: "#fff",
+              strokeWidth: 2
+            }
+          }}
+          labelComponent={
+            <VictoryTooltip
+              flyoutStyle={{ fill: "white", stroke: "#1f4e79" }}
+              style={{ fontSize: 11, fill: "#1f4e79" }}
+            />
+          }
+          labels={({ datum }) => 
+            `${datum.label}\nBeta: ${datum.y.toFixed(3)}\nAlpha: ${(datum.alpha * 100).toFixed(2)}%\nR²: ${datum.rSquared.toFixed(3)}`
+          }
+        />
 
-      {/* CAPM Details Table */}
-      <View style={styles.capmTable}>
-        <View style={styles.capmHeader}>
-          <Text style={[styles.capmHeaderText, { flex: 2 }]}>Asset</Text>
-          <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Beta</Text>
-          <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Alpha</Text>
-          <Text style={[styles.capmHeaderText, { flex: 2 }]}>Expected Return</Text>
-        </View>
+        <VictoryAxis
+          dependentAxis
+          tickFormat={(x) => x.toFixed(2)}
+          style={{
+            tickLabels: { fontSize: 12, fill: "#444" },
+            axis: { stroke: "#666" },
+            grid: { stroke: "#e0e0e0" }
+          }}
+          label="Beta (Systematic Risk)"
+          style={{
+            axisLabel: { fontSize: 14, padding: 40, fill: "#333" }
+          }}
+        />
         
-        {tickers.map((ticker, index) => (
-          <View key={ticker} style={styles.capmRow}>
-            <Text style={[styles.capmCellText, { flex: 2, fontWeight: '600' }]}>{ticker}</Text>
-            <Text style={[styles.capmCellText, { flex: 1.5 }]}>
-              {(betas[ticker] || 0).toFixed(3)}
+        <VictoryAxis
+          tickFormat={() => ""}
+          style={{
+            tickLabels: { fontSize: 10, fill: "#444" },
+            axis: { stroke: "#666" }
+          }}
+        />
+      </VictoryChart>
+
+      {/* CAPM Metrics Summary */}
+      <View style={styles.capmSummary}>
+        {tickers.map((ticker) => (
+          <View key={ticker} style={styles.capmMetric}>
+            <Text style={styles.capmTicker}>{ticker}</Text>
+            <Text style={styles.capmValue}>
+              β: {capmData[ticker].beta.toFixed(3)}
             </Text>
-            <Text style={[styles.capmCellText, { 
-              flex: 1.5,
-              color: (alphas[ticker] || 0) > 0 ? '#27AE60' : '#E74C3C'
-            }]}>
-              {((alphas[ticker] || 0) * 100).toFixed(2)}%
+            <Text style={[
+              styles.capmValue,
+              { color: capmData[ticker].alpha > 0 ? '#2a9d8f' : '#e63946' }
+            ]}>
+              α: {(capmData[ticker].alpha * 100).toFixed(2)}%
             </Text>
-            <Text style={[styles.capmCellText, { flex: 2 }]}>
-              {((capmReturns[ticker] || 0) * 100).toFixed(2)}%
+            <Text style={styles.capmValue}>
+              CAPM: {(capmData[ticker].capmExpectedReturn * 100).toFixed(1)}%
             </Text>
           </View>
         ))}
       </View>
-
-      {/* CAPM Interpretation */}
-      <View style={styles.capmInterpretation}>
-        <Text style={styles.interpretationTitle}>Interpretation</Text>
-        <Text style={styles.interpretationText}>
-          • <Text style={styles.boldText}>Beta</Text>: Measures systematic risk relative to market
-        </Text>
-        <Text style={styles.interpretationText}>
-          • <Text style={styles.boldText}>Alpha</Text>: Risk-adjusted excess return vs. CAPM prediction
-        </Text>
-        <Text style={styles.interpretationText}>
-          • <Text style={styles.boldText}>Positive Alpha</Text>: Outperforming market expectations
-        </Text>
-      </View>
-    </ScrollView>
+    </View>
   );
 };
 
-interface CorrelationMatrixChartProps {
+interface CorrelationMatrixProps {
   correlationMatrix: number[][];
   tickers: string[];
-  title: string;
 }
 
-export const CorrelationMatrixChart: React.FC<CorrelationMatrixChartProps> = ({
+export const CorrelationMatrixChart: React.FC<CorrelationMatrixProps> = ({
   correlationMatrix,
-  tickers,
-  title
+  tickers
 }) => {
-  if (!correlationMatrix || correlationMatrix.length === 0) {
-    return (
-      <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>{title}</Text>
-        <View style={styles.noDataContainer}>
-          <Text style={styles.noDataText}>Correlation data not available</Text>
-        </View>
-      </View>
-    );
+  // Convert matrix to heatmap data
+  const heatmapData = [];
+  for (let i = 0; i < tickers.length; i++) {
+    for (let j = 0; j < tickers.length; j++) {
+      heatmapData.push({
+        x: j + 1,
+        y: i + 1,
+        z: correlationMatrix[i][j],
+        label: `${tickers[i]} vs ${tickers[j]}\n${correlationMatrix[i][j].toFixed(3)}`
+      });
+    }
   }
-
-  // Function to get color based on correlation value
-  const getCorrelationColor = (value: number): string => {
-    if (value > 0.7) return '#E74C3C'; // Strong positive - Red
-    if (value > 0.3) return '#F39C12'; // Moderate positive - Orange
-    if (value > -0.3) return '#95A5A6'; // Weak - Gray
-    if (value > -0.7) return '#3498DB'; // Moderate negative - Blue
-    return '#2ECC71'; // Strong negative - Green
-  };
-
-  return (
-    <ScrollView style={styles.chartContainer} showsVerticalScrollIndicator={false}>
-      <Text style={styles.chartTitle}>{title}</Text>
-      
-      {/* Correlation Matrix */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.correlationMatrix}>
-          {/* Header Row */}
-          <View style={styles.correlationHeaderRow}>
-            <View style={styles.correlationCell} />
-            {tickers.map(ticker => (
-              <View key={ticker} style={styles.correlationCell}>
-                <Text style={styles.correlationHeaderText}>{ticker}</Text>
-              </View>
-            ))}
-          </View>
-          
-          {/* Data Rows */}
-          {tickers.map((rowTicker, rowIndex) => (
-            <View key={rowTicker} style={styles.correlationRow}>
-              <View style={styles.correlationCell}>
-                <Text style={styles.correlationHeaderText}>{rowTicker}</Text>
-              </View>
-              {tickers.map((colTicker, colIndex) => {
-                const correlation = correlationMatrix[rowIndex]?.[colIndex] || 0;
-                return (
-                  <TouchableOpacity
-                    key={colTicker}
-                    style={[
-                      styles.correlationCell,
-                      { backgroundColor: getCorrelationColor(correlation) }
-                    ]}
-                  >
-                    <Text style={styles.correlationValue}>
-                      {correlation.toFixed(2)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-
-      {/* Correlation Legend */}
-      <View style={styles.correlationLegend}>
-        <Text style={styles.legendTitle}>Correlation Strength</Text>
-        <View style={styles.legendRow}>
-          <View style={[styles.legendSquare, { backgroundColor: '#E74C3C' }]} />
-          <Text style={styles.legendLabel}>Strong Positive (&gt;0.7)</Text>
-        </View>
-        <View style={styles.legendRow}>
-          <View style={[styles.legendSquare, { backgroundColor: '#F39C12' }]} />
-          <Text style={styles.legendLabel}>Moderate Positive (0.3-0.7)</Text>
-        </View>
-        <View style={styles.legendRow}>
-          <View style={[styles.legendSquare, { backgroundColor: '#95A5A6' }]} />
-          <Text style={styles.legendLabel}>Weak (-0.3-0.3)</Text>
-        </View>
-        <View style={styles.legendRow}>
-          <View style={[styles.legendSquare, { backgroundColor: '#3498DB' }]} />
-          <Text style={styles.legendLabel}>Moderate Negative (-0.7--0.3)</Text>
-        </View>
-        <View style={styles.legendRow}>
-          <View style={[styles.legendSquare, { backgroundColor: '#2ECC71' }]} />
-          <Text style={styles.legendLabel}>Strong Negative (&lt;-0.7)</Text>
-        </View>
-      </View>
-
-      {/* Diversification Insights */}
-      <View style={styles.diversificationInsights}>
-        <Text style={styles.insightsTitle}>Diversification Analysis</Text>
-        {(() => {
-          const avgCorrelation = correlationMatrix.reduce((sum, row, i) => {
-            return sum + row.reduce((rowSum, val, j) => {
-              return i !== j ? rowSum + val : rowSum;
-            }, 0);
-          }, 0) / (tickers.length * (tickers.length - 1));
-
-          const highCorrelations = correlationMatrix.reduce((count, row, i) => {
-            return count + row.reduce((rowCount, val, j) => {
-              return i !== j && val > 0.7 ? rowCount + 1 : rowCount;
-            }, 0);
-          }, 0) / 2; // Divide by 2 to avoid double counting
-
-          return (
-            <>
-              <Text style={styles.insightText}>
-                Average correlation: {avgCorrelation.toFixed(3)}
-              </Text>
-              <Text style={styles.insightText}>
-                High correlations (&gt;0.7): {highCorrelations} pairs
-              </Text>
-              <Text style={styles.insightText}>
-                Diversification benefit: {avgCorrelation < 0.3 ? 'High' : avgCorrelation < 0.7 ? 'Moderate' : 'Low'}
-              </Text>
-            </>
-          );
-        })()}
-      </View>
-    </ScrollView>
-  );
-};
-
-interface PerformanceChartProps {
-  data: Array<{date: Date, value: number}>;
-  title: string;
-  color?: string;
-}
-
-export const PerformanceChart: React.FC<PerformanceChartProps> = ({
-  data,
-  title,
-  color = '#4A90E2'
-}) => {
-  if (!data || data.length === 0) {
-    return (
-      <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>{title}</Text>
-        <View style={styles.noDataContainer}>
-          <Text style={styles.noDataText}>No performance data available</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // Prepare data for line chart
-  const chartData = {
-    labels: data.map((_, index) => 
-      index % Math.floor(data.length / 6) === 0 ? 
-      data[index].date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
-    ),
-    datasets: [{
-      data: data.map(point => point.value),
-      color: (opacity = 1) => `rgba(74, 144, 226, ${opacity})`,
-      strokeWidth: 2,
-    }]
-  };
-
-  const totalReturn = data.length > 1 ? 
-    ((data[data.length - 1].value - data[0].value) / data[0].value * 100) : 0;
 
   return (
     <View style={styles.chartContainer}>
-      <Text style={styles.chartTitle}>{title}</Text>
+      <Text style={styles.chartTitle}>Asset Correlation Matrix</Text>
+      <Text style={styles.chartSubtitle}>Pearson Correlation Coefficients</Text>
       
-      <LineChart
-        data={chartData}
+      <VictoryChart
+        theme={VictoryTheme.material}
         width={chartWidth}
-        height={220}
-        chartConfig={{
-          ...chartConfig,
-          color: (opacity = 1) => color.replace('1)', `${opacity})`),
-        }}
-        bezier
-        style={styles.chart}
-      />
-      
-      <View style={styles.performanceStats}>
-        <Text style={styles.performanceText}>
-          Total Return: <Text style={{ 
-            color: totalReturn >= 0 ? '#27AE60' : '#E74C3C',
-            fontWeight: 'bold'
-          }}>
-            {totalReturn >= 0 ? '+' : ''}{totalReturn.toFixed(2)}%
-          </Text>
-        </Text>
+        height={chartHeight}
+        padding={{ left: 80, top: 20, right: 60, bottom: 80 }}
+      >
+        <VictoryScatter
+          data={heatmapData}
+          size={15}
+          style={{
+            data: { 
+              fill: ({ datum }) => getCorrelationColor(datum.z),
+              stroke: "#fff",
+              strokeWidth: 1
+            }
+          }}
+          labelComponent={
+            <VictoryTooltip
+              flyoutStyle={{ fill: "white", stroke: "#1f4e79" }}
+              style={{ fontSize: 10, fill: "#1f4e79" }}
+            />
+          }
+          labels={({ datum }) => datum.label}
+        />
+
+        <VictoryAxis
+          dependentAxis
+          tickFormat={(x) => tickers[x - 1] || ""}
+          style={{
+            tickLabels: { fontSize: 10, fill: "#444", angle: -45 },
+            axis: { stroke: "#666" }
+          }}
+        />
+        
+        <VictoryAxis
+          tickFormat={(x) => tickers[x - 1] || ""}
+          style={{
+            tickLabels: { fontSize: 10, fill: "#444", angle: 45 },
+            axis: { stroke: "#666" }
+          }}
+        />
+      </VictoryChart>
+
+      {/* Correlation legend */}
+      <View style={styles.correlationLegend}>
+        <Text style={styles.legendTitle}>Correlation Scale</Text>
+        <View style={styles.correlationScale}>
+          <View style={[styles.correlationBox, { backgroundColor: '#d73027' }]} />
+          <Text style={styles.correlationLabel}>-1.0</Text>
+          <View style={[styles.correlationBox, { backgroundColor: '#ffffff' }]} />
+          <Text style={styles.correlationLabel}>0.0</Text>
+          <View style={[styles.correlationBox, { backgroundColor: '#1a9850' }]} />
+          <Text style={styles.correlationLabel}>+1.0</Text>
+        </View>
       </View>
     </View>
   );
 };
 
+// UTILITY FUNCTIONS
+
+function getSharpeRatioColor(sharpeRatio: number): string {
+  // Color scale from red (low Sharpe) to green (high Sharpe)
+  if (sharpeRatio < 0) return '#d73027';
+  if (sharpeRatio < 0.5) return '#fc8d59';
+  if (sharpeRatio < 1.0) return '#fee08b';
+  if (sharpeRatio < 1.5) return '#d9ef8b';
+  if (sharpeRatio < 2.0) return '#91bfdb';
+  return '#1a9850';
+}
+
+function getCorrelationColor(correlation: number): string {
+  // Blue to white to red color scale
+  const absCorr = Math.abs(correlation);
+  if (correlation > 0) {
+    // Positive correlation: white to green
+    const intensity = Math.floor(255 - (absCorr * 180));
+    return `rgb(${intensity}, 255, ${intensity})`;
+  } else {
+    // Negative correlation: white to red
+    const intensity = Math.floor(255 - (absCorr * 180));
+    return `rgb(255, ${intensity}, ${intensity})`;
+  }
+}
+
+function generateCapitalMarketLine(riskFreeRate: number, optimalVol: number, optimalReturn: number) {
+  const slope = (optimalReturn - riskFreeRate) / optimalVol;
+  const maxVol = optimalVol * 2; // Extend CML beyond optimal portfolio
+  
+  return [
+    { x: 0, y: riskFreeRate },
+    { x: optimalVol, y: optimalReturn },
+    { x: maxVol, y: riskFreeRate + slope * maxVol }
+  ];
+}
+
 const styles = StyleSheet.create({
   chartContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#ffffff',
     borderRadius: 12,
-    padding: 15,
-    marginBottom: 15,
+    padding: 16,
+    marginVertical: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -519,236 +562,104 @@ const styles = StyleSheet.create({
   },
   chartTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2C3E50',
+    fontWeight: '700',
+    color: '#1f4e79',
     textAlign: 'center',
-    marginBottom: 15,
+    marginBottom: 4,
   },
-  subChartTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#34495E',
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  chart: {
-    marginVertical: 8,
-    borderRadius: 8,
+  chartSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 16,
   },
   legend: {
-    maxHeight: 120,
-    marginTop: 15,
-  },
-  legendItem: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  legendColor: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    marginRight: 10,
-  },
-  legendText: {
-    fontSize: 14,
-    color: '#2C3E50',
-  },
-  noDataContainer: {
-    height: 150,
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  noDataText: {
-    fontSize: 16,
-    color: '#95A5A6',
-    textAlign: 'center',
-  },
-  portfolioIndicator: {
-    backgroundColor: '#F8F9FA',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 15,
-  },
-  indicatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  indicatorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  indicatorText: {
-    fontSize: 14,
-    color: '#2C3E50',
-    flex: 1,
-  },
-  indicatorSubtext: {
-    fontSize: 12,
-    color: '#7F8C8D',
-    marginLeft: 20,
-  },
-  capmInfo: {
-    backgroundColor: '#F8F9FA',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 20,
-  },
-  capmInfoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2C3E50',
-    marginBottom: 8,
-  },
-  capmInfoText: {
-    fontSize: 14,
-    color: '#34495E',
-    marginBottom: 4,
-  },
-  betaReference: {
-    backgroundColor: '#EBF3FD',
-    padding: 10,
-    borderRadius: 6,
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  referenceText: {
-    fontSize: 12,
-    color: '#4A90E2',
-    textAlign: 'center',
-  },
-  capmTable: {
-    marginTop: 20,
-  },
-  capmHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#F8F9FA',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-  },
-  capmHeaderText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    textAlign: 'center',
-  },
-  capmRow: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  capmCellText: {
-    fontSize: 13,
-    color: '#34495E',
-    textAlign: 'center',
-  },
-  capmInterpretation: {
-    backgroundColor: '#F8F9FA',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 20,
-  },
-  interpretationTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2C3E50',
-    marginBottom: 10,
-  },
-  interpretationText: {
-    fontSize: 14,
-    color: '#34495E',
-    marginBottom: 6,
-    lineHeight: 20,
-  },
-  boldText: {
-    fontWeight: '600',
-    color: '#2C3E50',
-  },
-  correlationMatrix: {
-    minWidth: chartWidth,
-  },
-  correlationHeaderRow: {
-    flexDirection: 'row',
-    marginBottom: 2,
-  },
-  correlationRow: {
-    flexDirection: 'row',
-    marginBottom: 2,
-  },
-  correlationCell: {
-    width: 60,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    marginRight: 2,
-  },
-  correlationHeaderText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-  },
-  correlationValue: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  correlationLegend: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 8,
-  },
-  legendTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2C3E50',
-    marginBottom: 10,
+    flexWrap: 'wrap',
+    marginTop: 12,
   },
   legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginHorizontal: 8,
+    marginVertical: 2,
   },
-  legendSquare: {
-    width: 16,
-    height: 16,
-    marginRight: 10,
+  legendColor: {
+    width: 12,
+    height: 12,
+    marginRight: 6,
+    borderRadius: 2,
   },
-  legendLabel: {
-    fontSize: 14,
-    color: '#34495E',
+  legendText: {
+    fontSize: 11,
+    color: '#444',
+    fontWeight: '500',
   },
-  diversificationInsights: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: '#EBF3FD',
-    borderRadius: 8,
-  },
-  insightsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2C3E50',
-    marginBottom: 10,
-  },
-  insightText: {
-    fontSize: 14,
-    color: '#34495E',
-    marginBottom: 4,
-  },
-  performanceStats: {
-    marginTop: 15,
+  pieCenter: {
+    position: 'absolute',
+    top: chartHeight / 2 - 20,
+    left: chartWidth / 2 - 30,
     alignItems: 'center',
   },
-  performanceText: {
-    fontSize: 16,
-    color: '#2C3E50',
+  pieCenterText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1f4e79',
+  },
+  pieCenterSubtext: {
+    fontSize: 11,
+    color: '#666',
+  },
+  capmSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    flexWrap: 'wrap',
+    marginTop: 12,
+  },
+  capmMetric: {
+    alignItems: 'center',
+    margin: 4,
+    padding: 8,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    minWidth: 80,
+  },
+  capmTicker: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1f4e79',
+    marginBottom: 4,
+  },
+  capmValue: {
+    fontSize: 10,
+    color: '#333',
+    marginVertical: 1,
+  },
+  correlationLegend: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  legendTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+  },
+  correlationScale: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  correlationBox: {
+    width: 20,
+    height: 12,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    marginHorizontal: 2,
+  },
+  correlationLabel: {
+    fontSize: 10,
+    color: '#666',
+    marginHorizontal: 6,
   },
 });
