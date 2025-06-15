@@ -310,9 +310,9 @@ export const CAPMAnalysisChart: React.FC<CAPMAnalysisProps> = ({
 };
 
 // FIXED: Correlation Matrix Chart
-export const CorrelationMatrixChart: React.FC<CorrelationMatrixProps> = ({ 
-  correlationMatrix, 
-  tickers 
+export const CorrelationMatrixChart: React.FC<Partial<CorrelationMatrixProps>> = ({
+  correlationMatrix = [],
+  tickers = []
 }) => {
   if (!correlationMatrix || !tickers || correlationMatrix.length === 0) {
     return (
@@ -346,19 +346,19 @@ export const CorrelationMatrixChart: React.FC<CorrelationMatrixProps> = ({
           <View style={styles.correlationMatrix}>
             <View style={styles.correlationHeader}>
               <View style={styles.correlationCell} />
-              {tickers.map(ticker => (
+              {tickers?.map(ticker => (
                 <View key={ticker} style={styles.correlationCell}>
                   <Text style={styles.correlationHeaderText}>{ticker}</Text>
                 </View>
               ))}
             </View>
             
-            {correlationMatrix.map((row, i) => (
+            {correlationMatrix?.map((row, i) => (
               <View key={i} style={styles.correlationRow}>
                 <View style={styles.correlationCell}>
                   <Text style={styles.correlationHeaderText}>{tickers[i]}</Text>
                 </View>
-                {row.map((correlation, j) => (
+                {row?.map((correlation, j) => (
                   <View key={j} style={[
                     styles.correlationCell,
                     { backgroundColor: getCorrelationColor(correlation) + '20' }
