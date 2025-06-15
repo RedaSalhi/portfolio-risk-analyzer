@@ -1,5 +1,7 @@
 // app/_layout.tsx - ENHANCED WITH BEAUTIFUL DESIGN & ANIMATIONS
 // Modern tab layout with gradients, animations, and improved UX
+// Polyfills for web compatibility
+import '../src/polyfills';
 
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
