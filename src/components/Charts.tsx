@@ -1,6 +1,7 @@
 // src/components/Charts.tsx - ENHANCED WITH BEAUTIFUL ANIMATIONS
 // Enhanced with beautiful animations, better interactions, and modern design
 
+import '../polyfills';
 import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions, Animated, TouchableOpacity } from 'react-native';
 import { VictoryChart, VictoryScatter, VictoryPie, VictoryArea, VictoryAxis, 
