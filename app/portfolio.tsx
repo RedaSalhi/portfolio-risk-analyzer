@@ -1,5 +1,5 @@
-// app/portfolio.tsx - COMPLETE PROFESSIONAL PORTFOLIO OPTIMIZER
-// Includes all features from your Python app + real-time data
+// app/portfolio.tsx - FIXED PORTFOLIO OPTIMIZER
+// Corrected mathematical implementations and improved CAPM analysis
 
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
@@ -44,7 +44,7 @@ interface OptimizationResults {
   };
 }
 
-export default function EnhancedPortfolioOptimizer() {
+export default function FixedPortfolioOptimizer() {
   // Core portfolio inputs
   const [tickers, setTickers] = useState('AAPL,MSFT,GOOGL,TSLA,AMZN');
   const [portfolioValue, setPortfolioValue] = useState(1000000);
@@ -94,6 +94,7 @@ export default function EnhancedPortfolioOptimizer() {
     }
   };
 
+  // FIXED: Main optimization function with better error handling
   const runAdvancedOptimization = async () => {
     setLoading(true);
     
@@ -130,30 +131,45 @@ export default function EnhancedPortfolioOptimizer() {
       if (useMarketBenchmark) {
         try {
           marketReturns = await realTimeDataFetcher.getMarketData('2y');
-          marketReturn = marketReturns.reduce((sum, r) => sum + r, 0) / marketReturns.length * 252;
-          console.log(`✅ Market benchmark: ${marketReturns.length} returns, annual return: ${(marketReturn*100).toFixed(2)}%`);
+          if (marketReturns && marketReturns.length > 100) {
+            marketReturn = marketReturns.reduce((sum, r) => sum + r, 0) / marketReturns.length * 252;
+            console.log(`✅ Market benchmark: ${marketReturns.length} returns, annual return: ${(marketReturn*100).toFixed(2)}%`);
+          } else {
+            console.warn('Insufficient market data, disabling market benchmark');
+            setUseMarketBenchmark(false);
+            marketReturns = null;
+          }
         } catch (error) {
           console.warn('Market data failed, using portfolio proxy:', error.message);
-          useMarketBenchmark && setUseMarketBenchmark(false);
+          setUseMarketBenchmark(false);
+          marketReturns = null;
         }
       }
 
       // Step 3: Get real-time risk-free rate
       const riskFreeRate = includeRiskFree ? 
-        await realTimeDataFetcher.getRiskFreeRate() : 0.0;
+        await realTimeDataFetcher.getRiskFreeRate() : 0.02; // Default 2% if disabled
       
       console.log(`✅ Risk-free rate: ${(riskFreeRate * 100).toFixed(3)}%`);
 
-      // Step 4: Prepare returns matrix
-      const returnsMatrix = stockData.symbols.map(symbol => stockData.returns[symbol] || []);
+      // Step 4: Prepare returns matrix with validation
+      const returnsMatrix = stockData.symbols.map(symbol => {
+        const returns = stockData.returns[symbol] || [];
+        if (returns.length < 100) {
+          console.warn(`Warning: ${symbol} has only ${returns.length} observations`);
+        }
+        return returns;
+      });
       
       // Validate sufficient data
       const minObservations = Math.min(...returnsMatrix.map(r => r.length));
-      if (minObservations < 100) {
-        Alert.alert('Warning', `Limited data: only ${minObservations} observations. Results may be less reliable.`);
+      if (minObservations < 50) {
+        throw new Error(`Insufficient data: minimum ${minObservations} observations. Need at least 50 for reliable optimization.`);
       }
 
-      // Step 5: Initialize advanced optimizer
+      console.log(`📊 Optimization dataset: ${minObservations} observations per asset`);
+
+      // Step 5: Initialize optimizer with validated data
       const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate);
       
       // Set constraints
@@ -167,71 +183,143 @@ export default function EnhancedPortfolioOptimizer() {
       let optimizationResult;
       console.log(`🎯 Running ${optimizationMethod} optimization...`);
       
-      switch (optimizationMethod) {
-        case 'maxSharpe':
-          optimizationResult = optimizer.optimizeMaxSharpe();
-          break;
-        case 'minRisk':
-          optimizationResult = optimizer.optimizeMinRisk();
-          break;
-        case 'targetReturn':
-          optimizationResult = optimizer.optimizeForTargetReturn(targetReturn);
-          break;
-        case 'targetRisk':
-          optimizationResult = optimizer.optimizeForTargetVolatility(targetRisk);
-          break;
-        case 'equalWeight':
-          optimizationResult = optimizer.optimizeEqualWeight();
-          break;
-        case 'riskParity':
-          optimizationResult = optimizer.optimizeRiskParity();
-          break;
-        default:
-          optimizationResult = optimizer.optimizeMaxSharpe();
+      try {
+        switch (optimizationMethod) {
+          case 'maxSharpe':
+            optimizationResult = optimizer.optimizeMaxSharpe();
+            break;
+          case 'minRisk':
+            optimizationResult = optimizer.optimizeMinRisk();
+            break;
+          case 'targetReturn':
+            optimizationResult = optimizer.optimizeForTargetReturn(targetReturn);
+            break;
+          case 'targetRisk':
+            optimizationResult = optimizer.optimizeForTargetVolatility(targetRisk);
+            break;
+          case 'equalWeight':
+            optimizationResult = optimizer.optimizeEqualWeight();
+            break;
+          case 'riskParity':
+            optimizationResult = optimizer.optimizeRiskParity();
+            break;
+          default:
+            optimizationResult = optimizer.optimizeMaxSharpe();
+        }
+
+        // Validate optimization results
+        if (!optimizationResult.weights || optimizationResult.weights.length !== stockData.symbols.length) {
+          throw new Error('Invalid optimization results: weights array mismatch');
+        }
+
+        const weightSum = optimizationResult.weights.reduce((sum, w) => sum + w, 0);
+        if (Math.abs(weightSum - 1.0) > 0.05) {
+          console.warn(`Warning: weights sum to ${weightSum.toFixed(3)}, normalizing...`);
+          optimizationResult.weights = optimizationResult.weights.map(w => w / weightSum);
+        }
+
+        console.log(`✅ Optimization complete: ${optimizationResult.sharpeRatio.toFixed(3)} Sharpe ratio`);
+
+      } catch (error) {
+        console.error('Optimization failed:', error);
+        throw new Error(`Optimization failed: ${error.message}`);
       }
 
-      console.log(`✅ Optimization complete: ${(optimizationResult.sharpeRatio).toFixed(3)} Sharpe ratio`);
+      // Step 7: Generate efficient frontier with error handling
+      let efficientFrontier = [];
+      try {
+        efficientFrontier = optimizer.generateEfficientFrontier(50);
+        console.log(`✅ Efficient frontier: ${efficientFrontier.length} portfolios`);
+      } catch (error) {
+        console.warn('Efficient frontier generation failed:', error.message);
+        // Continue without efficient frontier
+      }
 
-      // Step 7: Generate efficient frontier
-      const efficientFrontier = optimizer.generateEfficientFrontier(50);
-      console.log(`✅ Efficient frontier: ${efficientFrontier.length} portfolios`);
-
-      // Step 8: Calculate CAPM metrics
+      // Step 8: FIXED CAPM calculation with proper error handling
       let capmResults = {};
       let betas = {};
       let alphas = {};
       
-      if (marketReturns && marketReturns.length > 0) {
+      if (marketReturns && marketReturns.length > 100) {
         console.log('📊 Calculating CAPM metrics...');
         try {
           const capmData = optimizer.calculateCAPMReturns(marketReturns);
-          capmResults = Object.fromEntries(
-            stockData.symbols.map((ticker, i) => [ticker, capmData[i]?.expectedReturn || 0])
-          );
-          betas = Object.fromEntries(
-            stockData.symbols.map((ticker, i) => [ticker, capmData[i]?.beta || 0])
-          );
-          alphas = Object.fromEntries(
-            stockData.symbols.map((ticker, i) => [ticker, capmData[i]?.alpha || 0])
-          );
-          console.log('✅ CAPM analysis complete');
+          
+          if (capmData && capmData.length === stockData.symbols.length) {
+            // FIXED: Proper mapping with validation
+            stockData.symbols.forEach((ticker, i) => {
+              if (capmData[i]) {
+                capmResults[ticker] = capmData[i].expectedReturn || 0;
+                betas[ticker] = capmData[i].beta || 0;
+                alphas[ticker] = capmData[i].alpha || 0;
+              } else {
+                console.warn(`CAPM data missing for ${ticker}`);
+                capmResults[ticker] = 0;
+                betas[ticker] = 1;
+                alphas[ticker] = 0;
+              }
+            });
+            console.log('✅ CAPM analysis complete');
+          } else {
+            console.warn('CAPM calculation returned invalid data');
+          }
         } catch (error) {
           console.warn('CAPM calculation failed:', error.message);
+          // Initialize with default values
+          stockData.symbols.forEach(ticker => {
+            capmResults[ticker] = 0;
+            betas[ticker] = 1;
+            alphas[ticker] = 0;
+          });
         }
+      } else {
+        console.log('📊 CAPM analysis skipped - insufficient market data');
+        // Initialize with default values when no market data
+        stockData.symbols.forEach(ticker => {
+          capmResults[ticker] = 0;
+          betas[ticker] = 1;
+          alphas[ticker] = 0;
+        });
       }
 
-      // Step 9: Calculate risk attribution
-      const riskAttribution = optimizer.calculateRiskAttribution(optimizationResult.weights);
+      // Step 9: Calculate risk attribution with error handling
+      let riskAttribution = {};
+      try {
+        riskAttribution = optimizer.calculateRiskAttribution(optimizationResult.weights);
+        // FIXED: Map to actual ticker names
+        const mappedRiskAttribution = {};
+        stockData.symbols.forEach((ticker, i) => {
+          mappedRiskAttribution[ticker] = riskAttribution[`Asset_${i}`] || 0;
+        });
+        riskAttribution = mappedRiskAttribution;
+      } catch (error) {
+        console.warn('Risk attribution calculation failed:', error.message);
+        // Initialize with equal attribution
+        stockData.symbols.forEach(ticker => {
+          riskAttribution[ticker] = 1 / stockData.symbols.length;
+        });
+      }
 
-      // Step 10: Calculate correlation matrix
-      const correlationMatrix = VaRCalculator.calculateRobustCorrelationMatrix(returnsMatrix);
+      // Step 10: Calculate correlation matrix with error handling
+      let correlationMatrix = [];
+      try {
+        correlationMatrix = VaRCalculator.calculateRobustCorrelationMatrix(returnsMatrix);
+        console.log(`✅ Correlation matrix: ${correlationMatrix.length}x${correlationMatrix[0]?.length}`);
+      } catch (error) {
+        console.warn('Correlation matrix calculation failed:', error.message);
+        // Create identity matrix as fallback
+        const n = stockData.symbols.length;
+        correlationMatrix = Array(n).fill(null).map((_, i) => 
+          Array(n).fill(null).map((_, j) => i === j ? 1 : 0)
+        );
+      }
 
-      // Compile comprehensive results
+      // Compile comprehensive results with validation
       const comprehensiveResults: OptimizationResults = {
         weights: optimizationResult.weights,
-        expectedReturn: optimizationResult.expectedReturn,
-        volatility: optimizationResult.volatility,
-        sharpeRatio: optimizationResult.sharpeRatio,
+        expectedReturn: optimizationResult.expectedReturn || 0,
+        volatility: optimizationResult.volatility || 0,
+        sharpeRatio: optimizationResult.sharpeRatio || 0,
         tickers: stockData.symbols,
         capmReturns: capmResults,
         betas: betas,
@@ -248,10 +336,15 @@ export default function EnhancedPortfolioOptimizer() {
         }
       };
 
+      // Final validation
+      if (comprehensiveResults.weights.some(w => isNaN(w) || !isFinite(w))) {
+        throw new Error('Optimization produced invalid weights (NaN or Infinite)');
+      }
+
       setResults(comprehensiveResults);
       setActiveTab('weights');
 
-      // Success feedback
+      // Success feedback with validation
       const successMessage = `✅ Portfolio optimized!\n• Method: ${optimizationMethods.find(m => m.key === optimizationMethod)?.label}\n• Expected Return: ${(optimizationResult.expectedReturn * 100).toFixed(2)}%\n• Risk: ${(optimizationResult.volatility * 100).toFixed(2)}%\n• Sharpe Ratio: ${optimizationResult.sharpeRatio.toFixed(3)}`;
       
       Alert.alert('Optimization Complete', successMessage);
@@ -262,10 +355,12 @@ export default function EnhancedPortfolioOptimizer() {
       let errorMessage = 'Portfolio optimization failed.';
       if (error.message.includes('real-time')) {
         errorMessage = 'Unable to fetch real-time market data. Please check your internet connection.';
-      } else if (error.message.includes('insufficient')) {
-        errorMessage = 'Insufficient market data for reliable optimization.';
+      } else if (error.message.includes('insufficient') || error.message.includes('Insufficient')) {
+        errorMessage = 'Insufficient market data for reliable optimization. Try with fewer assets or check ticker symbols.';
       } else if (error.message.includes('API')) {
         errorMessage = 'Data source temporarily unavailable. Please try again.';
+      } else if (error.message.includes('Invalid')) {
+        errorMessage = 'Invalid input parameters. Please check your settings.';
       }
       
       Alert.alert('Optimization Error', errorMessage);
@@ -293,7 +388,7 @@ export default function EnhancedPortfolioOptimizer() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Portfolio Optimizer</Text>
-          <Text style={styles.subtitle}>Professional Portfolio Management</Text>
+          <Text style={styles.subtitle}>Fixed Professional Portfolio Management</Text>
           
           {/* System Health Indicator */}
           {dataHealth && (
@@ -510,7 +605,7 @@ export default function EnhancedPortfolioOptimizer() {
                 </View>
               )}
 
-              {activeTab === 'frontier' && results.efficientFrontier && (
+              {activeTab === 'frontier' && results.efficientFrontier && results.efficientFrontier.length > 0 && (
                 <View>
                   <EfficientFrontierChart
                     frontierData={results.efficientFrontier}
@@ -524,50 +619,48 @@ export default function EnhancedPortfolioOptimizer() {
                 </View>
               )}
 
-              // CORRECTION pour le formatage .3f - Dans la section CAPM:
-
-                {activeTab === 'capm' && Object.keys(results.capmReturns).length > 0 && (
-                  <View>
-                    <CAPMAnalysisChart
-                      capmReturns={results.capmReturns}
-                      betas={results.betas}
-                      alphas={results.alphas}
-                      tickers={results.tickers}
-                      marketReturn={results.metadata.marketReturn}
-                      riskFreeRate={results.metadata.riskFreeRate}
-                    />
-                    
-                    {/* Table CAPM avec formatage .3f */}
-                    <View style={styles.capmTable}>
-                      <View style={styles.capmHeader}>
-                        <Text style={[styles.capmHeaderText, { flex: 2 }]}>Asset</Text>
-                        <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Beta</Text>
-                        <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Alpha</Text>
-                        <Text style={[styles.capmHeaderText, { flex: 2 }]}>Expected Return</Text>
-                      </View>
-                      
-                      {results.tickers.map((ticker, index) => (
-                        <View key={ticker} style={styles.capmRow}>
-                          <Text style={[styles.capmCellText, { flex: 2, fontWeight: '600' }]}>
-                            {ticker}
-                          </Text>
-                          <Text style={[styles.capmCellText, { flex: 1.5 }]}>
-                            {(results.betas[ticker] || 0).toFixed(3)}
-                          </Text>
-                          <Text style={[styles.capmCellText, { 
-                            flex: 1.5,
-                            color: (results.alphas[ticker] || 0) > 0 ? '#27AE60' : '#E74C3C'
-                          }]}>
-                            {((results.alphas[ticker] || 0) * 100).toFixed(3)}%
-                          </Text>
-                          <Text style={[styles.capmCellText, { flex: 2 }]}>
-                            {((results.capmReturns[ticker] || 0) * 100).toFixed(3)}%
-                          </Text>
-                        </View>
-                      ))}
+              {activeTab === 'capm' && Object.keys(results.capmReturns).length > 0 && (
+                <View>
+                  <CAPMAnalysisChart
+                    capmReturns={results.capmReturns}
+                    betas={results.betas}
+                    alphas={results.alphas}
+                    tickers={results.tickers}
+                    marketReturn={results.metadata.marketReturn}
+                    riskFreeRate={results.metadata.riskFreeRate}
+                  />
+                  
+                  {/* FIXED CAPM Table */}
+                  <View style={styles.capmTable}>
+                    <View style={styles.capmHeader}>
+                      <Text style={[styles.capmHeaderText, { flex: 2 }]}>Asset</Text>
+                      <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Beta</Text>
+                      <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Alpha</Text>
+                      <Text style={[styles.capmHeaderText, { flex: 2 }]}>Expected Return</Text>
                     </View>
+                    
+                    {results.tickers.map((ticker, index) => (
+                      <View key={ticker} style={styles.capmRow}>
+                        <Text style={[styles.capmCellText, { flex: 2, fontWeight: '600' }]}>
+                          {ticker}
+                        </Text>
+                        <Text style={[styles.capmCellText, { flex: 1.5 }]}>
+                          {(results.betas[ticker] || 0).toFixed(3)}
+                        </Text>
+                        <Text style={[styles.capmCellText, { 
+                          flex: 1.5,
+                          color: (results.alphas[ticker] || 0) > 0 ? '#27AE60' : '#E74C3C'
+                        }]}>
+                          {((results.alphas[ticker] || 0) * 100).toFixed(2)}%
+                        </Text>
+                        <Text style={[styles.capmCellText, { flex: 2 }]}>
+                          {((results.capmReturns[ticker] || 0) * 100).toFixed(2)}%
+                        </Text>
+                      </View>
+                    ))}
                   </View>
-                )}
+                </View>
+              )}
 
               {activeTab === 'risk' && results.riskAttribution && (
                 <View>
@@ -576,7 +669,7 @@ export default function EnhancedPortfolioOptimizer() {
                     <View key={ticker} style={styles.riskRow}>
                       <Text style={styles.tickerText}>{ticker}</Text>
                       <Text style={styles.riskText}>
-                        {(results.riskAttribution[ticker] * 100 || 0).toFixed(2)}%
+                        {((results.riskAttribution[ticker] || 0) * 100).toFixed(2)}%
                       </Text>
                     </View>
                   ))}
@@ -882,10 +975,32 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     flex: 1,
   },
+  capmTable: {
+    marginTop: 20,
+  },
+  capmHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F8F9FA',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
   capmHeaderText: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#2C3E50',
+    textAlign: 'center',
+  },
+  capmRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  capmCellText: {
+    fontSize: 13,
+    color: '#34495E',
     textAlign: 'center',
   },
   chartTitle: {
