@@ -9,8 +9,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "jest",
-    "reset-project": "node ./scripts/reset-project.js"
+    "reset-project": "node ./scripts/reset-project.js",
+    "test": "jest"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",

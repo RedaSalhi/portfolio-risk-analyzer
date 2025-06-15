@@ -965,13 +965,76 @@ export class PortfolioOptimizer {
   }
 
   calculateTargetReturnWeights(targetReturn) {
-    const maxSharpeWeights = this.calculateMaxSharpeWeights();
-    return maxSharpeWeights;
+    // Mean-variance optimization: minimize variance subject to a target return
+    const n = this.numAssets;
+    const ones = Array(n).fill(1);
+
+    const solve = (A, b) => {
+      const L = PortfolioOptimizer.choleskyDecomposition(A);
+      const y = Array(n).fill(0);
+      for (let i = 0; i < n; i++) {
+        let sum = 0;
+        for (let k = 0; k < i; k++) sum += L[i][k] * y[k];
+        y[i] = (b[i] - sum) / L[i][i];
+      }
+      const x = Array(n).fill(0);
+      for (let i = n - 1; i >= 0; i--) {
+        let sum = 0;
+        for (let k = i + 1; k < n; k++) sum += L[k][i] * x[k];
+        x[i] = (y[i] - sum) / L[i][i];
+      }
+      return x;
+    };
+
+    const v1 = solve(this.annualizedCovMatrix, ones);
+    const v2 = solve(this.annualizedCovMatrix, this.annualizedMeans);
+
+    const A = ones.reduce((s, _, i) => s + ones[i] * v1[i], 0);
+    const B = ones.reduce((s, _, i) => s + ones[i] * v2[i], 0);
+    const C = this.annualizedMeans.reduce((s, _, i) => s + this.annualizedMeans[i] * v2[i], 0);
+
+    const D = A * C - B * B;
+    if (Math.abs(D) < 1e-10) {
+      return this.calculateMinVarWeights();
+    }
+
+    const lambda = (C - B * targetReturn) / D;
+    const gamma = (A * targetReturn - B) / D;
+
+    let weights = v1.map((val, i) => lambda * val + gamma * v2[i]);
+
+    // Enforce basic constraints
+    weights = weights.map(w => {
+      if (!this.constraints.allowShortSelling) w = Math.max(0, w);
+      w = Math.max(this.constraints.minPositionSize, Math.min(w, this.constraints.maxPositionSize));
+      return w;
+    });
+
+    const sum = weights.reduce((s, w) => s + w, 0);
+    if (sum !== 0) weights = weights.map(w => w / sum);
+
+    return weights;
   }
 
   calculateTargetVolatilityWeights(targetVolatility) {
-    const minVarWeights = this.calculateMinVarWeights();
-    return minVarWeights;
+    const tol = 1e-4;
+    let low = Math.min(...this.annualizedMeans);
+    let high = Math.max(...this.annualizedMeans);
+    let weights = this.calculateMinVarWeights();
+
+    for (let i = 0; i < 50; i++) {
+      const mid = (low + high) / 2;
+      weights = this.calculateTargetReturnWeights(mid);
+      const vol = this.calculatePortfolioMetrics(weights).volatility;
+      if (Math.abs(vol - targetVolatility) < tol) break;
+      if (vol > targetVolatility) {
+        high = mid;
+      } else {
+        low = mid;
+      }
+    }
+
+    return weights;
   }
 
   calculatePortfolioMetrics(weights) {
