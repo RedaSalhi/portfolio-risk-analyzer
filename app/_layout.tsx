@@ -1,15 +1,22 @@
-// app/_layout.tsx - ENHANCED WITH BEAUTIFUL DESIGN & ANIMATIONS
-// Modern tab layout with gradients, animations, and improved UX
-// Polyfills for web compatibility
-import '../src/polyfills';
+// app/_layout.tsx
+// Layout principal pour Expo Router avec navigation par onglets moderne
 
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef, useEffect } from 'react';
-import { Animated, Platform, View, Text, StyleSheet } from 'react-native';
+import { 
+  Animated, 
+  Platform, 
+  View, 
+  Text, 
+  StyleSheet,
+  StatusBar as RNStatusBar
+} from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { ErrorBoundary, errorManager } from '../src/utils/errorManagement';
 
-// Custom Tab Bar Icon Component with animations
+// Composant d'icône d'onglet animé
 const AnimatedTabIcon = ({ 
   name, 
   color, 
@@ -21,29 +28,29 @@ const AnimatedTabIcon = ({
   size: number; 
   focused: boolean;
 }) => {
-  const scaleAnim = useRef(new Animated.Value(focused ? 1 : 0.8)).current;
+  const scaleAnim = useRef(new Animated.Value(focused ? 1.1 : 1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Scale animation when focused
+    // Animation d'échelle au focus
     Animated.spring(scaleAnim, {
-      toValue: focused ? 1.1 : 1,
+      toValue: focused ? 1.2 : 1,
       useNativeDriver: true,
       tension: 300,
       friction: 10,
     }).start();
 
-    // Pulse animation for active tab
+    // Animation de pulsation pour l'onglet actif
     if (focused) {
       const pulse = Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.2,
-          duration: 600,
+          toValue: 1.1,
+          duration: 800,
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 600,
+          duration: 800,
           useNativeDriver: true,
         }),
       ]);
@@ -66,19 +73,22 @@ const AnimatedTabIcon = ({
       ]}
     >
       {focused && (
-        <View style={[styles.iconBackground, { backgroundColor: color + '20' }]} />
+        <LinearGradient
+          colors={[color + '40', color + '20']}
+          style={styles.iconBackground}
+        />
       )}
       <Ionicons 
         name={name as any} 
         size={size} 
-        color={color}
+        color={focused ? '#ffffff' : color}
         style={styles.icon}
       />
     </Animated.View>
   );
 };
 
-// Custom Tab Bar Label with animations
+// Composant de label d'onglet animé
 const AnimatedTabLabel = ({ 
   label, 
   color, 
@@ -89,7 +99,7 @@ const AnimatedTabLabel = ({
   focused: boolean; 
 }) => {
   const fadeAnim = useRef(new Animated.Value(focused ? 1 : 0.7)).current;
-  const slideAnim = useRef(new Animated.Value(focused ? 0 : 5)).current;
+  const slideAnim = useRef(new Animated.Value(focused ? 0 : 3)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -99,7 +109,7 @@ const AnimatedTabLabel = ({
         useNativeDriver: true,
       }),
       Animated.spring(slideAnim, {
-        toValue: focused ? 0 : 3,
+        toValue: focused ? 0 : 2,
         useNativeDriver: true,
         tension: 300,
         friction: 8,
@@ -112,11 +122,11 @@ const AnimatedTabLabel = ({
       style={[
         styles.tabLabel,
         {
-          color,
+          color: focused ? color : '#8e8e93',
           opacity: fadeAnim,
           transform: [{ translateY: slideAnim }],
           fontWeight: focused ? '700' : '500',
-        },
+        }
       ]}
     >
       {label}
@@ -124,203 +134,255 @@ const AnimatedTabLabel = ({
   );
 };
 
-export default function EnhancedTabLayout() {
-  const tabBarBackground = useRef(new Animated.Value(1)).current;
+// Composant d'erreur personnalisé pour le layout
+function LayoutErrorFallback({ error, retry }: { error: any; retry: () => void }) {
+  return (
+    <View style={styles.errorContainer}>
+      <LinearGradient
+        colors={['#ff6b6b', '#ee5a24']}
+        style={styles.errorGradient}
+      >
+        <Ionicons name="warning" size={64} color="#ffffff" />
+        <Text style={styles.errorTitle}>Erreur de Navigation</Text>
+        <Text style={styles.errorMessage}>
+          Un problème est survenu avec la navigation. L'application va redémarrer.
+        </Text>
+        <View style={styles.errorButton}>
+          <Text style={styles.errorButtonText} onPress={retry}>
+            Redémarrer
+          </Text>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+}
 
+// Configuration des onglets avec leurs propriétés
+const tabsConfig = [
+  {
+    name: 'index',
+    title: 'Accueil',
+    iconName: 'home',
+    iconNameFocused: 'home',
+    color: '#667eea',
+    gradientColors: ['#667eea', '#764ba2'],
+  },
+  {
+    name: 'portfolio',
+    title: 'Portefeuille',
+    iconName: 'pie-chart-outline',
+    iconNameFocused: 'pie-chart',
+    color: '#f093fb',
+    gradientColors: ['#f093fb', '#f5576c'],
+  },
+  {
+    name: 'var',
+    title: 'Analyse VaR',
+    iconName: 'analytics-outline',
+    iconNameFocused: 'analytics',
+    color: '#4facfe',
+    gradientColors: ['#4facfe', '#00f2fe'],
+  },
+  {
+    name: 'about',
+    title: 'À propos',
+    iconName: 'person-outline',
+    iconNameFocused: 'person',
+    color: '#43e97b',
+    gradientColors: ['#43e97b', '#38f9d7'],
+  },
+];
+
+// Layout principal avec navigation par onglets
+export default function RootLayout() {
   useEffect(() => {
-    // Subtle breathing animation for the tab bar
-    const breathe = Animated.sequence([
-      Animated.timing(tabBarBackground, {
-        toValue: 0.98,
-        duration: 3000,
-        useNativeDriver: true,
-      }),
-      Animated.timing(tabBarBackground, {
-        toValue: 1,
-        duration: 3000,
-        useNativeDriver: true,
-      }),
-    ]);
-    Animated.loop(breathe).start();
+    // Initialisation du layout
+    console.log('🚀 Initializing Expo Router Layout');
+    
+    // Gestion des erreurs globales
+    const handleError = (error: any, isFatal?: boolean) => {
+      console.error('Layout Error:', error);
+      errorManager.createError(
+        'RENDER',
+        error.message || 'Layout error',
+        'Erreur dans la navigation de l\'application',
+        isFatal ? 'CRITICAL' : 'HIGH',
+        { error: error.toString(), isFatal },
+        !isFatal
+      );
+    };
+
+    // Configuration de la barre de statut
+    if (Platform.OS === 'android') {
+      RNStatusBar.setBackgroundColor('#667eea', true);
+      RNStatusBar.setBarStyle('light-content', true);
+    }
+
+    return () => {
+      console.log('🧹 Cleaning up layout');
+    };
   }, []);
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: '#1f4e79',
-        tabBarInactiveTintColor: '#8e8e93',
-        headerShown: false, // We'll use custom headers in each screen
-        tabBarStyle: {
-          backgroundColor: 'transparent',
-          borderTopWidth: 0,
-          elevation: 0,
-          shadowOpacity: 0,
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: Platform.OS === 'ios' ? 90 : 70,
-          paddingBottom: Platform.OS === 'ios' ? 30 : 10,
-          paddingTop: 10,
-        },
-        tabBarBackground: () => (
-          <Animated.View
-            style={[
-              styles.tabBarBackground,
-              {
-                transform: [{ scale: tabBarBackground }]
-              }
-            ]}
-          >
-            <LinearGradient
-              colors={['rgba(255,255,255,0.95)', 'rgba(248,249,250,0.98)']}
-              style={styles.tabBarGradient}
-            />
-            <View style={styles.tabBarBorder} />
-          </Animated.View>
-        ),
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-          marginTop: 4,
-        },
-        tabBarIconStyle: {
-          marginTop: 4,
-        },
+    <ErrorBoundary
+      fallback={LayoutErrorFallback}
+      onError={(error) => {
+        console.error('Root Layout Error Boundary:', error);
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size, focused }) => (
-            <AnimatedTabIcon
-              name={focused ? "home" : "home-outline"}
-              color={color}
-              size={size}
-              focused={focused}
-            />
-          ),
-          tabBarLabel: ({ color, focused }) => (
-            <AnimatedTabLabel
-              label="Home"
-              color={color}
-              focused={focused}
-            />
-          ),
+      <StatusBar style="light" backgroundColor="#667eea" />
+      <Tabs
+        screenOptions={({ route }) => {
+          const tabConfig = tabsConfig.find(tab => tab.name === route.name);
+          
+          return {
+            headerShown: false,
+            tabBarActiveTintColor: tabConfig?.color || '#667eea',
+            tabBarInactiveTintColor: '#8e8e93',
+            tabBarStyle: {
+              ...styles.tabBar,
+              backgroundColor: '#ffffff',
+              borderTopWidth: 0,
+              elevation: 20,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: -4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+            },
+            tabBarItemStyle: {
+              paddingVertical: 8,
+            },
+            tabBarLabelStyle: {
+              fontSize: 11,
+              fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+            },
+            tabBarIcon: ({ focused, color, size }) => {
+              if (!tabConfig) return null;
+              
+              const iconName = focused 
+                ? tabConfig.iconNameFocused 
+                : tabConfig.iconName;
+
+              return (
+                <AnimatedTabIcon
+                  name={iconName}
+                  color={tabConfig.color}
+                  size={size}
+                  focused={focused}
+                />
+              );
+            },
+            tabBarLabel: ({ focused, color }) => {
+              if (!tabConfig) return null;
+              
+              return (
+                <AnimatedTabLabel
+                  label={tabConfig.title}
+                  color={tabConfig.color}
+                  focused={focused}
+                />
+              );
+            },
+            tabBarHideOnKeyboard: Platform.OS === 'android',
+            tabBarAllowFontScaling: false,
+          };
         }}
-      />
-      <Tabs.Screen
-        name="portfolio"
-        options={{
-          title: 'Portfolio',
-          tabBarIcon: ({ color, size, focused }) => (
-            <AnimatedTabIcon
-              name={focused ? "pie-chart" : "pie-chart-outline"}
-              color={color}
-              size={size}
-              focused={focused}
-            />
-          ),
-          tabBarLabel: ({ color, focused }) => (
-            <AnimatedTabLabel
-              label="Portfolio"
-              color={color}
-              focused={focused}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="var"
-        options={{
-          title: 'Risk Analysis',
-          tabBarIcon: ({ color, size, focused }) => (
-            <AnimatedTabIcon
-              name={focused ? "analytics" : "analytics-outline"}
-              color={color}
-              size={size}
-              focused={focused}
-            />
-          ),
-          tabBarLabel: ({ color, focused }) => (
-            <AnimatedTabLabel
-              label="VaR Analysis"
-              color={color}
-              focused={focused}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="about"
-        options={{
-          title: 'Research',
-          tabBarIcon: ({ color, size, focused }) => (
-            <AnimatedTabIcon
-              name={focused ? "library" : "library-outline"}
-              color={color}
-              size={size}
-              focused={focused}
-            />
-          ),
-          tabBarLabel: ({ color, focused }) => (
-            <AnimatedTabLabel
-              label="Research"
-              color={color}
-              focused={focused}
-            />
-          ),
-        }}
-      />
-    </Tabs>
+      >
+        {tabsConfig.map((tab) => (
+          <Tabs.Screen
+            key={tab.name}
+            name={tab.name}
+            options={{
+              title: tab.title,
+              href: tab.name === 'index' ? '/' : `/${tab.name}`,
+            }}
+          />
+        ))}
+      </Tabs>
+    </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
-  tabBarBackground: {
+  tabBar: {
+    height: Platform.OS === 'ios' ? 88 : 70,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  tabBarGradient: {
-    flex: 1,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  tabBarBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 20,
-    right: 20,
-    height: 1,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    borderRadius: 1,
+    marginHorizontal: 0,
   },
   iconContainer: {
-    alignItems: 'center',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     justifyContent: 'center',
-    width: 40,
-    height: 40,
+    alignItems: 'center',
+    position: 'relative',
+    marginBottom: 2,
   },
   iconBackground: {
     position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    top: 2,
-    left: 2,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
   },
   icon: {
-    textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    zIndex: 2,
   },
   tabLabel: {
     fontSize: 11,
     textAlign: 'center',
     marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#f8f9fa',
+  },
+  errorGradient: {
+    borderRadius: 20,
+    padding: 40,
+    alignItems: 'center',
+    maxWidth: 350,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  errorButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  errorButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
