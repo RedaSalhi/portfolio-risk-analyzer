@@ -340,7 +340,6 @@ export default function BeautifulPortfolioOptimizer() {
         throw new Error('Invalid optimization results: weights array mismatch');
       }
 
-      const weightSum = optimizationResult.weights.reduce((sum, w) => sum + w, 0);
       if (Math.abs(weightSum - 1.0) > 0.05) {
         console.warn(`Warning: weights sum to ${weightSum.toFixed(3)}, normalizing...`);
         optimizationResult.weights = optimizationResult.weights.map(w => w / weightSum);
