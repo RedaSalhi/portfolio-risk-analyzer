@@ -218,15 +218,20 @@ function boxMullerRandom() {
  */
 export class VaRCalculator {
   
+  // 3. FIX: Improve Cornish-Fisher VaR with validation
   static calculateIndividualParametricVaR(assetReturns, ticker, confidenceLevel = 0.95, positionSize = 100000) {
     console.log(`🧮 Calculating Individual Parametric VaR for ${ticker}...`);
-    
+  
     if (!assetReturns || assetReturns.length < 30) {
       throw new Error(`Insufficient data for ${ticker}: Need at least 30 return observations`);
     }
 
-    const cleanReturns = this.removeOutliers(assetReturns, 3);
-    
+    const cleanReturns = this.removeOutliers(assetReturns, 'modified_zscore', 3.5);
+  
+    if (cleanReturns.length < assetReturns.length * 0.8) {
+      console.warn(`${ticker}: Removed ${assetReturns.length - cleanReturns.length} outliers (${((1 - cleanReturns.length/assetReturns.length)*100).toFixed(1)}%)`);
+    }
+  
     const mean = this.calculateMean(cleanReturns);
     const variance = this.calculateVariance(cleanReturns, mean);
     const volatility = Math.sqrt(variance);
@@ -235,20 +240,49 @@ export class VaRCalculator {
 
     const alpha = 1 - confidenceLevel;
     const zScore = normalInverse(alpha);
+  
+    // FIX: Robust Cornish-Fisher adjustment with validation
+    let cfAdjustment = 0;
+  
+    if (Math.abs(skewness) < 3 && Math.abs(kurtosis - 3) < 10) {
+      const z2 = zScore * zScore;
+      const z3 = z2 * zScore;
     
-    const cfAdjustment = (1/6) * (zScore * zScore - 1) * skewness + 
-                        (1/24) * (zScore * zScore * zScore - 3 * zScore) * (kurtosis - 3) - 
-                        (1/36) * (2 * zScore * zScore * zScore - 5 * zScore) * skewness * skewness;
+      const skewAdj = (1/6) * (z2 - 1) * skewness;
+      const kurtAdj = (1/24) * (z3 - 3 * zScore) * (kurtosis - 3);
+      const skew2Adj = -(1/36) * (2 * z3 - 5 * zScore) * skewness * skewness;
     
+      cfAdjustment = skewAdj + kurtAdj + skew2Adj;
+    
+      // Sanity check: adjustment shouldn't be too extreme
+      if (Math.abs(cfAdjustment) > 2) {
+        console.warn(`${ticker}: Large Cornish-Fisher adjustment (${cfAdjustment.toFixed(3)}), using standard normal`);
+        cfAdjustment = 0;
+      }
+    } else {
+      console.warn(`${ticker}: Extreme distribution parameters (skew: ${skewness.toFixed(2)}, kurt: ${kurtosis.toFixed(2)}), using standard normal`);
+    }
+  
     const adjustedZScore = zScore + cfAdjustment;
-    
     const varPercent = -(mean + adjustedZScore * volatility);
     const varValue = Math.abs(varPercent * positionSize);
 
-    const phi_z = Math.exp(-0.5 * zScore * zScore) / Math.sqrt(2 * Math.PI);
-    const expectedShortfall = Math.abs((mean + (phi_z / alpha) * volatility) * positionSize);
+    // FIX: Expected shortfall calculation
+    let expectedShortfall;
+    if (Math.abs(cfAdjustment) < 0.1) {
+      // Use standard formula if CF adjustment is small
+      const phi_z = Math.exp(-0.5 * zScore * zScore) / Math.sqrt(2 * Math.PI);
+      expectedShortfall = Math.abs((mean + (phi_z / alpha) * volatility) * positionSize);
+    } else {
+      // Use empirical approach for non-normal distributions
+      const sortedReturns = [...cleanReturns].sort((a, b) => a - b);
+      const tailIndex = Math.floor(alpha * sortedReturns.length);
+      const tailReturns = sortedReturns.slice(0, tailIndex + 1);
+      const tailMean = tailReturns.reduce((sum, r) => sum + r, 0) / tailReturns.length;
+      expectedShortfall = Math.abs(tailMean * positionSize);
+    }
 
-    console.log(`✅ ${ticker} Parametric VaR: $${varValue.toFixed(0)}`);
+    console.log(`✅ ${ticker} Parametric VaR: $${varValue.toFixed(0)} (CF adj: ${cfAdjustment.toFixed(3)})`);
 
     return {
       ticker: ticker,
@@ -259,8 +293,14 @@ export class VaRCalculator {
       zScore: Math.abs(adjustedZScore),
       skewness: skewness,
       kurtosis: kurtosis,
+      cornishFisherAdjustment: cfAdjustment,
       confidenceLevel: confidenceLevel,
-      method: 'parametric_individual'
+      method: 'parametric_individual',
+      dataQuality: {
+        originalObservations: assetReturns.length,
+        cleanedObservations: cleanReturns.length,
+        outliersRemoved: assetReturns.length - cleanReturns.length
+      }
     };
   }
 
@@ -491,19 +531,32 @@ export class VaRCalculator {
   static calculateComponentVaR(weights, stds, correlationMatrix, portfolioVol, portfolioVaR) {
     const n = weights.length;
     const componentVaR = {};
-    
+  
+    // Ensure portfolio volatility is annualized properly
+    const annualizedPortfolioVol = portfolioVol * Math.sqrt(252);
+  
     for (let i = 0; i < n; i++) {
       let marginalContribution = 0;
       for (let j = 0; j < n; j++) {
-        marginalContribution += weights[j] * stds[i] * stds[j] * correlationMatrix[i][j];
+        // Fix: Use annualized standard deviations
+        marginalContribution += weights[j] * stds[i] * stds[j] * correlationMatrix[i][j] * 252;
       }
-      
-      const marginalVaR = marginalContribution / portfolioVol;
-      const component = weights[i] * marginalVaR * (portfolioVaR / portfolioVol);
-      
+    
+      // Fix: Proper marginal VaR calculation
+      const marginalVaR = marginalContribution / annualizedPortfolioVol;
+    
+      // Fix: Component VaR in consistent units
+      const component = weights[i] * marginalVaR * (portfolioVaR / (portfolioVol * Math.sqrt(252)));
+    
       componentVaR[`Asset_${i}`] = Math.max(component, 0);
     }
-    
+  
+    // Validation: Components should sum to total VaR
+    const totalComponents = Object.values(componentVaR).reduce((sum, comp) => sum + comp, 0);
+    if (Math.abs(totalComponents - portfolioVaR) > portfolioVaR * 0.1) {
+      console.warn(`Component VaR sum (${totalComponents.toFixed(0)}) differs from total VaR (${portfolioVaR.toFixed(0)})`);
+    }
+  
     return componentVaR;
   }
 
@@ -525,18 +578,42 @@ export class VaRCalculator {
 
   // ===== UTILITY METHODS =====
 
-  static removeOutliers(data, threshold = 3) {
+  static removeOutliers(data, method = 'modified_zscore', threshold = 3.5) {
     if (!data || data.length < 10) return data;
+  
+    if (method === 'modified_zscore') {
+      const median = this.calculateMedian(data);
+      const mad = this.calculateMAD(data, median);
     
+      if (mad === 0) return data; // All values identical
+    
+      return data.filter(val => {
+        const modifiedZScore = 0.6745 * (val - median) / mad;
+        return Math.abs(modifiedZScore) <= threshold;
+      });
+    }
+  
+    // Fallback to original z-score method
     const mean = data.reduce((sum, val) => sum + val, 0) / data.length;
     const std = Math.sqrt(data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / (data.length - 1));
-    
+  
+    if (std === 0) return data;
+  
     return data.filter(val => Math.abs(val - mean) <= threshold * std);
   }
-
-  static calculateMean(data) {
-    if (!data || data.length === 0) return 0;
-    return data.reduce((sum, val) => sum + val, 0) / data.length;
+// NEW
+  static calculateMedian(data) {
+    const sorted = [...data].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? 
+      (sorted[mid - 1] + sorted[mid]) / 2 : 
+      sorted[mid];
+  }
+// NEW
+  static calculateMAD(data, median = null) {
+    if (median === null) median = this.calculateMedian(data);
+    const deviations = data.map(val => Math.abs(val - median));
+    return this.calculateMedian(deviations);
   }
 
   static calculateVariance(data, mean = null) {
@@ -570,7 +647,7 @@ export class VaRCalculator {
   static calculateRobustCorrelationMatrix(returnsMatrix) {
     const n = returnsMatrix.length;
     const correlationMatrix = Array(n).fill(null).map(() => Array(n).fill(0));
-    
+  
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
         if (i === j) {
@@ -580,8 +657,45 @@ export class VaRCalculator {
         }
       }
     }
+  
+    // FIX: Ensure positive definite matrix
+    return this.ensurePositiveDefinite(correlationMatrix);
+  }
+
+  
+  static ensurePositiveDefinite(matrix) {
+    const n = matrix.length;
+    const eigenThreshold = 1e-8;
+  
+    // Step 1: Clamp correlations to valid range
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        if (i !== j) {
+          matrix[i][j] = Math.max(-0.99, Math.min(0.99, matrix[i][j]));
+        } else {
+          matrix[i][j] = 1.0; // Diagonal must be 1
+        }
+      }
+    }
+  
+    // Step 2: Simple regularization - add small value to diagonal if needed
+    for (let i = 0; i < n; i++) {
+      let rowSum = 0;
+      for (let j = 0; j < n; j++) {
+        if (i !== j) rowSum += Math.abs(matrix[i][j]);
+      }
     
-    return correlationMatrix;
+      // If row sum of off-diagonals approaches or exceeds 1, regularize
+      if (rowSum > 0.95) {
+        for (let j = 0; j < n; j++) {
+          if (i !== j) {
+            matrix[i][j] *= 0.95 / rowSum;
+          }
+        }
+      }
+    }
+  
+    return matrix;
   }
 
   static robustCorrelation(x, y) {
@@ -723,18 +837,27 @@ export class PortfolioOptimizer {
     return covariance / (n - 1);
   }
 
-  optimizeMaxSharpe(numSimulations = 10000) {
-    console.log(`🎲 Running Markowitz optimization with ${numSimulations.toLocaleString()} Monte Carlo simulations`);
-    
+  optimizeMaxSharpe(numSimulations = 10000, constraints = {}) {
+    console.log(`🎲 Running constrained Markowitz optimization with ${numSimulations.toLocaleString()} simulations`);
+  
+    const { maxPositionSize = 1.0, allowShortSelling = false } = constraints;
+    const minWeight = allowShortSelling ? -maxPositionSize : 0;
+    const maxWeight = maxPositionSize;
+  
     let bestSharpe = -Infinity;
     let bestWeights = null;
     let bestMetrics = null;
     const allResults = [];
 
     for (let i = 0; i < numSimulations; i++) {
-      const weights = this.generateRandomWeights();
+      const weights = this.generateConstrainedWeights({ 
+        minWeight, 
+        maxWeight, 
+        maxIterations: 100 
+      });
+    
       const metrics = this.calculatePortfolioMetrics(weights);
-      
+    
       allResults.push({
         weights: [...weights],
         ...metrics
@@ -747,13 +870,19 @@ export class PortfolioOptimizer {
       }
     }
 
-    console.log(`✅ Optimization complete. Best Sharpe ratio: ${bestSharpe.toFixed(4)}`);
+    console.log(`✅ Constrained optimization complete. Best Sharpe ratio: ${bestSharpe.toFixed(4)}`);
+    console.log(`   Max position: ${Math.max(...bestWeights).toFixed(3)} (limit: ${maxWeight})`);
 
     return {
       weights: bestWeights,
       ...bestMetrics,
       efficientFrontier: this.generateEfficientFrontier(allResults),
-      allSimulations: allResults
+      allSimulations: allResults,
+      constraints: {
+        maxPositionSize,
+        allowShortSelling,
+        constraintsSatisfied: bestWeights.every(w => w >= minWeight && w <= maxWeight)
+      }
     };
   }
 
@@ -960,6 +1089,44 @@ export class PortfolioOptimizer {
     return weights.map(weight => weight / sum);
   }
 
+  // 5. FIX: Add constraint handling to portfolio optimization
+  generateConstrainedWeights(constraints = {}) {
+    const { minWeight = 0, maxWeight = 1, maxIterations = 10000 } = constraints;
+  
+    for (let attempt = 0; attempt < maxIterations; attempt++) {
+      const weights = this.generateRandomWeights();
+    
+      // Check constraints
+      const violatesMin = weights.some(w => w < minWeight);
+      const violatesMax = weights.some(w => w > maxWeight);
+    
+      if (!violatesMin && !violatesMax) {
+        return weights;
+      }
+    
+      // If constraints are violated, try to adjust
+      if (attempt < maxIterations / 2) {
+        continue; // Just try again with new random weights
+      } else {
+        // In second half, try to adjust weights to meet constraints
+        const adjustedWeights = weights.map(w => Math.max(minWeight, Math.min(maxWeight, w)));
+        const sum = adjustedWeights.reduce((s, w) => s + w, 0);
+      
+        if (sum > 0) {
+          const normalizedWeights = adjustedWeights.map(w => w / sum);
+          if (normalizedWeights.every(w => w >= minWeight && w <= maxWeight)) {
+            return normalizedWeights;
+          }
+        }
+      }
+    }
+  
+    // Fallback: equal weights within constraints
+    const equalWeight = Math.min(maxWeight, 1 / this.numAssets);
+    const weights = Array(this.numAssets).fill(equalWeight);
+    const sum = weights.reduce((s, w) => s + w, 0);
+    return weights.map(w => w / sum);
+  }
   calculateCapitalAllocation(targetReturn = null, targetVolatility = null) {
     const tangencyResult = this.optimizeMaxSharpe(5000);
     const tangencyReturn = tangencyResult.expectedReturn;
