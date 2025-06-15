@@ -11,7 +11,8 @@ class RealTimeDataFetcher {
     this.endpoints = {
       yahoo: 'https://query1.finance.yahoo.com/v8/finance/chart/',
       fred: 'https://api.stlouisfed.org/fred/series/observations',
-      fredApiKey: '6c9061531b2c22864f1516a52090aabd', // Replace with your FRED API key
+      // Read FRED API key from environment variable
+      fredApiKey: process.env.FRED_API_KEY,
       // Fallback proxy for CORS issues
       proxy: 'https://api.allorigins.win/get?url='
     };
@@ -167,7 +168,11 @@ class RealTimeDataFetcher {
   async getRiskFreeRate() {
     try {
       console.log('📊 Fetching risk-free rate from FRED...');
-      
+
+      if (!this.endpoints.fredApiKey) {
+        throw new Error('FRED_API_KEY not set');
+      }
+
       // 3-Month Treasury Bill Secondary Market Rate
       const fredUrl = `${this.endpoints.fred}?series_id=TB3MS&api_key=${this.endpoints.fredApiKey}&file_type=json&limit=1&sort_order=desc`;
       
