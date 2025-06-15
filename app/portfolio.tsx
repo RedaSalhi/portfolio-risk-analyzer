@@ -403,14 +403,9 @@ export default function BeautifulPortfolioOptimizer() {
       }
 
       // Correlation matrix
-      const correlationMatrix = CorrelationCalculator.calculateCorrelationMatrix(returnsMatrix);
-      const correlationArray = [];
-      for (let i = 0; i < stockData.symbols.length; i++) {
-        correlationArray[i] = [];
-        for (let j = 0; j < stockData.symbols.length; j++) {
-          correlationArray[i][j] = correlationMatrix.get([i, j]);
-        }
-      }
+      const correlationMatrix = CorrelationCalculator.calculateCorrelationMatrix(
+        returnsMatrix
+      );
 
       // Risk attribution
       const riskAttribution = RiskAttributionCalculator.calculateRiskContribution(
@@ -449,7 +444,7 @@ export default function BeautifulPortfolioOptimizer() {
         capmReturns: capmResults,
         betas: betas,
         alphas: alphas,
-        correlationMatrix: correlationArray,
+        correlationMatrix: correlationMatrix,
         efficientFrontier: efficientFrontier,
         riskAttribution: riskAttribution,
         allSimulations: optimizationResult.allSimulations || [],
