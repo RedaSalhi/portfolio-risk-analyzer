@@ -988,7 +988,10 @@ export default function BeautifulPortfolioOptimizer() {
                 />
               )}
 
-              {activeTab === 'correlation' && (
+              {activeTab === 'correlation' &&
+                results.correlationMatrix &&
+                results.tickers &&
+                results.correlationMatrix.length > 0 && (
                 <CorrelationMatrixChart
                   correlationMatrix={results.correlationMatrix}
                   tickers={results.tickers}
