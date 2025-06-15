@@ -185,9 +185,7 @@ export default function BeautifulPortfolioOptimizer() {
       return;
     }
 
-    const tickerList = Array.from(new Set(
-      tickers.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
-    ));
+    const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
     
     if (tickerList.length < 2) {
       Alert.alert('Error', 'Please enter at least 2 ticker symbols for portfolio optimization');
@@ -261,10 +259,7 @@ export default function BeautifulPortfolioOptimizer() {
       // Step 5: Run optimization
       setOptimizationProgress(80);
       animateProgress(0.8);
-      const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate, {
-        allowShortSelling,
-        maxPositionSize,
-      });
+      const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate);
       
       let optimizationResult;
       console.log(`🎯 Running ${optimizationMethod} optimization with ${monteCarloSimulations.toLocaleString()} simulations...`);
@@ -293,7 +288,7 @@ export default function BeautifulPortfolioOptimizer() {
       }
 
       // Validate and normalize weights
-      if (!optimizationResult.weights || optimizationResult.weights.length !== returnsMatrix.length) {
+      if (!optimizationResult.weights || optimizationResult.weights.length !== stockData.symbols.length) {
         throw new Error('Invalid optimization results: weights array mismatch');
       }
 
