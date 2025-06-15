@@ -1,5 +1,5 @@
-// app/var.tsx - ENHANCED PROFESSIONAL VAR ANALYZER
-// Complete VaR analysis with component analysis, stress testing, and backtesting
+// app/var.tsx - FIXED VaR ANALYZER
+// Proper individual vs portfolio VaR calculations
 
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
@@ -23,29 +23,57 @@ import { VaRCalculator } from '../src/utils/financialCalculations';
 
 const { width } = Dimensions.get('window');
 
-interface VaRResults {
-  var95: number;
-  var99: number;
+interface IndividualVaRResult {
+  ticker: string;
+  var: number;
   expectedShortfall: number;
+  volatility?: number;
+  mean?: number;
+  exceedanceRate?: number;
+  method: string;
+}
+
+interface PortfolioVaRResult {
+  var: number;
+  expectedShortfall: number;
+  portfolioMean?: number;
+  portfolioVolatility?: number;
   componentVaR?: { [key: string]: number };
-  marginalVaR?: { [key: string]: number };
+  marginalVaR?: number[];
   diversificationBenefit?: number;
+  correlationMatrix?: number[][];
+  method: string;
+}
+
+interface VaRResults {
+  // Individual asset results (for parametric/historical per asset)
+  individualResults?: IndividualVaRResult[];
+  
+  // Portfolio results (for portfolio methods)
+  portfolioResult?: PortfolioVaRResult;
+  
+  // Common fields
   method: string;
   confidenceLevel: number;
   positionSize: number;
   tickers: string[];
-  correlationMatrix?: number[][];
+  weights: number[];
+  
+  // Backtesting and stress testing
   backtestResults?: {
     exceedances: number;
     exceedanceRate: number;
     expectedRate: number;
     kupiecTest: number;
+    totalObservations: number;
   };
   stressResults?: Array<{
     scenario: string;
     loss: number;
     probability: number;
+    description?: string;
   }>;
+  
   metadata: {
     dataSource: string;
     fetchTime: string;
@@ -53,22 +81,21 @@ interface VaRResults {
   };
 }
 
-export default function EnhancedVaRAnalyzer() {
+export default function FixedVaRAnalyzer() {
   // Core VaR inputs
   const [tickers, setTickers] = useState('AAPL,MSFT,GOOGL,TSLA,AMZN');
-  const [weights, setWeights] = useState('20,20,20,20,20'); // Equal weights
+  const [weights, setWeights] = useState('20,20,20,20,20');
   const [positionSize, setPositionSize] = useState(1000000);
   const [confidenceLevel, setConfidenceLevel] = useState(0.95);
   
-  // VaR method selection
-  const [varMethod, setVarMethod] = useState('parametric');
-  const [timeHorizon, setTimeHorizon] = useState(1); // Days
+  // VaR method selection - FIXED
+  const [varMethod, setVarMethod] = useState('parametric_individual');
+  const [timeHorizon, setTimeHorizon] = useState(1);
   const [numSimulations, setNumSimulations] = useState(10000);
   
   // Advanced options
   const [includeStressTesting, setIncludeStressTesting] = useState(true);
   const [runBacktest, setRunBacktest] = useState(true);
-  const [calculateComponents, setCalculateComponents] = useState(true);
   
   // State management
   const [loading, setLoading] = useState(false);
@@ -76,16 +103,45 @@ export default function EnhancedVaRAnalyzer() {
   const [activeTab, setActiveTab] = useState('summary');
   const [dataHealth, setDataHealth] = useState<any>(null);
 
-  // VaR methods
+  // FIXED VaR methods - clearly separated
   const varMethods = [
-    { key: 'parametric', label: 'Parametric VaR', icon: '📊', description: 'Normal distribution assumption' },
-    { key: 'historical', label: 'Historical Simulation', icon: '📈', description: 'Based on historical returns' },
-    { key: 'monteCarlo', label: 'Monte Carlo', icon: '🎲', description: 'Simulation-based approach' },
-    { key: 'portfolio', label: 'Portfolio VaR', icon: '💼', description: 'Diversified portfolio analysis' },
-    { key: 'componentVaR', label: 'Component VaR', icon: '🔍', description: 'Individual asset contributions' }
+    { 
+      key: 'parametric_individual', 
+      label: 'Parametric (Per Asset)', 
+      icon: '📊', 
+      description: 'Normal distribution per individual asset',
+      isIndividual: true 
+    },
+    { 
+      key: 'historical_individual', 
+      label: 'Historical (Per Asset)', 
+      icon: '📈', 
+      description: 'Historical simulation per individual asset',
+      isIndividual: true 
+    },
+    { 
+      key: 'portfolio_parametric', 
+      label: 'Portfolio VaR (Parametric)', 
+      icon: '💼', 
+      description: 'Portfolio-level parametric VaR',
+      isIndividual: false 
+    },
+    { 
+      key: 'portfolio_historical', 
+      label: 'Portfolio VaR (Historical)', 
+      icon: '📉', 
+      description: 'Portfolio-level historical VaR',
+      isIndividual: false 
+    },
+    { 
+      key: 'monte_carlo', 
+      label: 'Monte Carlo VaR', 
+      icon: '🎲', 
+      description: 'Simulation-based portfolio VaR',
+      isIndividual: false 
+    }
   ];
 
-  // Stress test scenarios
   const stressScenarios = [
     { name: 'Market Crash', marketShock: -0.20, description: '20% market decline' },
     { name: 'Interest Rate Shock', bondShock: -0.10, description: '10% bond decline' },
@@ -112,7 +168,6 @@ export default function EnhancedVaRAnalyzer() {
       const weightArray = weightsString.split(',').map(w => parseFloat(w.trim()));
       
       if (weightArray.length !== tickerCount) {
-        // Auto-generate equal weights
         return Array(tickerCount).fill(100 / tickerCount).map(w => w / 100);
       }
       
@@ -124,11 +179,11 @@ export default function EnhancedVaRAnalyzer() {
       
       return weightArray.map(w => w / 100);
     } catch (error) {
-      // Return equal weights on error
       return Array(tickerCount).fill(1 / tickerCount);
     }
   };
 
+  // FIXED: Main VaR analysis function
   const runAdvancedVaRAnalysis = async () => {
     setLoading(true);
     const startTime = Date.now();
@@ -150,11 +205,11 @@ export default function EnhancedVaRAnalyzer() {
       }
 
       const portfolioWeights = parseWeights(weights, tickerList.length);
+      const selectedMethod = varMethods.find(m => m.key === varMethod);
       
-      console.log('🚀 Starting advanced VaR analysis for:', tickerList);
-      console.log('💼 Portfolio weights:', portfolioWeights.map((w, i) => `${tickerList[i]}: ${(w*100).toFixed(1)}%`));
+      console.log(`🚀 Starting ${selectedMethod?.label} analysis for:`, tickerList);
 
-      // Step 1: Fetch real-time market data
+      // Fetch real-time market data
       const stockData = await realTimeDataFetcher.fetchMultipleStocks(tickerList, '2y', true);
       
       if (!stockData.metadata || stockData.metadata.dataSource !== 'real-time-multi-source') {
@@ -163,149 +218,56 @@ export default function EnhancedVaRAnalyzer() {
 
       console.log(`✅ Real-time data: ${stockData.symbols.join(', ')}`);
 
-      // Step 2: Prepare returns matrix
+      // Prepare returns matrix
       const returnsMatrix = stockData.symbols.map(symbol => stockData.returns[symbol] || []);
       
       // Validate sufficient data
       const minObservations = Math.min(...returnsMatrix.map(r => r.length));
-      if (minObservations < 100) {
+      if (minObservations < 50) {
         Alert.alert('Warning', `Limited data: only ${minObservations} observations. VaR estimates may be less reliable.`);
       }
 
       console.log(`📊 Analyzing ${minObservations} observations per asset`);
 
-      // Step 3: Run VaR calculation based on method
-        console.log(`🎯 Running ${varMethod} optimization...`);
-        
-        switch (varMethod) {
-          case 'parametric':
-            if (tickerList.length === 1) {
-              varResults = VaRCalculator.calculateParametricVaR(
-                returnsMatrix[0], confidenceLevel, positionSize * portfolioWeights[0]
-              );
-              additionalMetrics = {
-                mean: varResults.mean,
-                volatility: varResults.volatility,
-                zScore: varResults.zScore,
-                skewness: varResults.skewness || 0,
-                kurtosis: varResults.kurtosis || 0
-              };
-            } else {
-              varResults = VaRCalculator.calculatePortfolioVaR(
-                returnsMatrix, portfolioWeights, confidenceLevel, positionSize
-              );
-              additionalMetrics = {
-                portfolioMean: varResults.portfolioMean,
-                portfolioVolatility: varResults.portfolioVolatility,
-                diversificationBenefit: varResults.diversificationBenefit
-              };
-            }
-            break;
-        
-          case 'historical':
-            varResults = VaRCalculator.calculateHistoricalVaR(
-              returnsMatrix, portfolioWeights, confidenceLevel, positionSize
-            );
-            additionalMetrics = {
-              historicalObservations: varResults.observations,
-              percentileValue: varResults.percentileValue
-            };
-            break;
-        
-          case 'monteCarlo':
-            varResults = VaRCalculator.calculateMonteCarloVaR(
-              returnsMatrix, portfolioWeights, confidenceLevel, numSimulations, positionSize
-            );
-            additionalMetrics = {
-              numSimulations: numSimulations,
-              portfolioMean: varResults.portfolioMean,
-              portfolioVolatility: varResults.portfolioVolatility
-            };
-            break;
-        
-          case 'portfolio':
-          case 'componentVaR':
-            // CORRECTION MAJEURE : Passer les tickers pour Component VaR
-            varResults = VaRCalculator.calculatePortfolioVaR(
-              returnsMatrix, portfolioWeights, confidenceLevel, positionSize
-            );
-            
-            // CORRECTION : Calculer Component VaR avec les noms des tickers
-            if (varResults.componentVaR) {
-              const correctedComponentVaR = {};
-              Object.keys(varResults.componentVaR).forEach((key, index) => {
-                const tickerName = stockData.symbols[index] || `Asset_${index}`;
-                correctedComponentVaR[tickerName] = varResults.componentVaR[key];
-              });
-              varResults.componentVaR = correctedComponentVaR;
-            }
-            
-            additionalMetrics = {
-              componentVaR: varResults.componentVaR,
-              marginalVaR: varResults.marginalVaR,
-              diversificationBenefit: varResults.diversificationBenefit
-            };
-            break;
-        
-          default:
-            varResults = VaRCalculator.calculateParametricVaR(
-              returnsMatrix[0], confidenceLevel, positionSize
-            );
-        }
-
-      console.log(`✅ ${varMethod} VaR calculated: $${varResults.var.toFixed(0)}`);
-
-      // Step 4: Calculate VaR at different confidence levels
-      const var99Results = varMethod === 'monteCarlo' ? 
-        VaRCalculator.calculateMonteCarloVaR(returnsMatrix, portfolioWeights, 0.99, numSimulations, positionSize) :
-        VaRCalculator.calculateParametricVaR(returnsMatrix[0], 0.99, positionSize);
-
-      // Step 5: Stress testing
-      let stressResults = [];
-      if (includeStressTesting) {
-        console.log('💥 Running stress tests...');
-        stressResults = await runStressTests(returnsMatrix, portfolioWeights, positionSize);
-      }
-
-      // Step 6: Backtesting
-      let backtestResults = null;
-      if (runBacktest && returnsMatrix[0].length > 250) {
-        console.log('📊 Running VaR backtesting...');
-        backtestResults = performBacktest(returnsMatrix, portfolioWeights, varResults, confidenceLevel, positionSize);
-      }
-
-      // Step 7: Calculate correlation matrix
-      const correlationMatrix = VaRCalculator.calculateRobustCorrelationMatrix(returnsMatrix);
-
-      // Compile comprehensive results
-      const calculationTime = Date.now() - startTime;
+      // FIXED: Route to appropriate calculation method
+      let varResults: VaRResults;
       
-      const comprehensiveResults: VaRResults = {
-        var95: varResults.var,
-        var99: var99Results.var || varResults.var * 1.3, // Approximate if not calculated
-        expectedShortfall: varResults.expectedShortfall || varResults.var * 1.3,
-        componentVaR: varResults.componentVaR,
-        marginalVaR: varResults.marginalVaR,
-        diversificationBenefit: varResults.diversificationBenefit,
-        method: varMethod,
-        confidenceLevel: confidenceLevel,
-        positionSize: positionSize,
-        tickers: stockData.symbols,
-        correlationMatrix: correlationMatrix,
-        backtestResults: backtestResults,
-        stressResults: stressResults,
-        metadata: {
-          dataSource: stockData.metadata.dataSource,
-          fetchTime: stockData.metadata.fetchTime,
-          calculationTime: calculationTime
-        }
+      if (selectedMethod?.isIndividual) {
+        // Individual asset VaR calculations
+        varResults = await calculateIndividualVaR(returnsMatrix, stockData.symbols, portfolioWeights, selectedMethod.key);
+      } else {
+        // Portfolio VaR calculations
+        varResults = await calculatePortfolioVaR(returnsMatrix, stockData.symbols, portfolioWeights, selectedMethod.key);
+      }
+
+      // Add common metadata
+      const calculationTime = Date.now() - startTime;
+      varResults.metadata = {
+        dataSource: stockData.metadata.dataSource,
+        fetchTime: stockData.metadata.fetchTime,
+        calculationTime: calculationTime
       };
 
-      setResults(comprehensiveResults);
+      // Run additional analysis if enabled
+      if (includeStressTesting) {
+        console.log('💥 Running stress tests...');
+        varResults.stressResults = await runStressTests(returnsMatrix, portfolioWeights, positionSize);
+      }
+
+      if (runBacktest && minObservations > 250) {
+        console.log('📊 Running VaR backtesting...');
+        varResults.backtestResults = performBacktest(returnsMatrix, portfolioWeights, varResults, confidenceLevel, positionSize);
+      }
+
+      setResults(varResults);
       setActiveTab('summary');
 
       // Success feedback
-      const successMessage = `✅ VaR Analysis Complete!\n• Method: ${varMethods.find(m => m.key === varMethod)?.label}\n• ${(confidenceLevel * 100).toFixed(0)}% VaR: $${varResults.var.toFixed(0)}\n• Expected Shortfall: $${(varResults.expectedShortfall || varResults.var * 1.3).toFixed(0)}\n• Calculation time: ${calculationTime}ms`;
+      const totalVar = varResults.individualResults 
+        ? varResults.individualResults.reduce((sum, r) => sum + r.var, 0)
+        : varResults.portfolioResult?.var || 0;
+
+      const successMessage = `✅ VaR Analysis Complete!\n• Method: ${selectedMethod?.label}\n• ${(confidenceLevel * 100).toFixed(0)}% VaR: $${totalVar.toFixed(0)}\n• Calculation time: ${calculationTime}ms`;
       
       Alert.alert('VaR Analysis Complete', successMessage);
 
@@ -327,6 +289,103 @@ export default function EnhancedVaRAnalyzer() {
     }
   };
 
+  // FIXED: Individual asset VaR calculation
+  const calculateIndividualVaR = async (returnsMatrix: number[][], tickers: string[], weights: number[], method: string): Promise<VaRResults> => {
+    const individualResults: IndividualVaRResult[] = [];
+    
+    for (let i = 0; i < returnsMatrix.length; i++) {
+      const assetReturns = returnsMatrix[i];
+      const ticker = tickers[i];
+      const assetPositionSize = positionSize * weights[i];
+      
+      try {
+        let result: IndividualVaRResult;
+        
+        if (method === 'parametric_individual') {
+          const varResult = VaRCalculator.calculateIndividualParametricVaR(
+            assetReturns, ticker, confidenceLevel, assetPositionSize
+          );
+          result = varResult;
+        } else if (method === 'historical_individual') {
+          const varResult = VaRCalculator.calculateIndividualHistoricalVaR(
+            assetReturns, ticker, confidenceLevel, assetPositionSize
+          );
+          result = varResult;
+        } else {
+          throw new Error(`Unsupported individual method: ${method}`);
+        }
+        
+        individualResults.push(result);
+        console.log(`✅ ${ticker} VaR: $${result.var.toFixed(0)}`);
+        
+      } catch (error) {
+        console.error(`❌ Failed to calculate VaR for ${ticker}:`, error.message);
+        // Continue with other assets
+      }
+    }
+    
+    if (individualResults.length === 0) {
+      throw new Error('Failed to calculate VaR for any assets');
+    }
+
+    return {
+      individualResults: individualResults,
+      method: method,
+      confidenceLevel: confidenceLevel,
+      positionSize: positionSize,
+      tickers: tickers,
+      weights: weights,
+      metadata: {
+        dataSource: '',
+        fetchTime: '',
+        calculationTime: 0
+      }
+    };
+  };
+
+  // FIXED: Portfolio VaR calculation
+  const calculatePortfolioVaR = async (returnsMatrix: number[][], tickers: string[], weights: number[], method: string): Promise<VaRResults> => {
+    let portfolioResult: PortfolioVaRResult;
+    
+    try {
+      if (method === 'portfolio_parametric') {
+        portfolioResult = VaRCalculator.calculatePortfolioVaR(
+          returnsMatrix, weights, confidenceLevel, positionSize
+        );
+      } else if (method === 'portfolio_historical') {
+        portfolioResult = VaRCalculator.calculatePortfolioHistoricalVaR(
+          returnsMatrix, weights, confidenceLevel, positionSize
+        );
+      } else if (method === 'monte_carlo') {
+        portfolioResult = VaRCalculator.calculateMonteCarloVaR(
+          returnsMatrix, weights, confidenceLevel, numSimulations, positionSize
+        );
+      } else {
+        throw new Error(`Unsupported portfolio method: ${method}`);
+      }
+      
+      console.log(`✅ Portfolio ${method} VaR: $${portfolioResult.var.toFixed(0)}`);
+      
+    } catch (error) {
+      console.error('❌ Portfolio VaR calculation failed:', error);
+      throw error;
+    }
+
+    return {
+      portfolioResult: portfolioResult,
+      method: method,
+      confidenceLevel: confidenceLevel,
+      positionSize: positionSize,
+      tickers: tickers,
+      weights: weights,
+      metadata: {
+        dataSource: '',
+        fetchTime: '',
+        calculationTime: 0
+      }
+    };
+  };
+
   const runStressTests = async (returnsMatrix: number[][], weights: number[], positionSize: number) => {
     const stressResults = [];
     
@@ -345,7 +404,7 @@ export default function EnhancedVaRAnalyzer() {
         stressResults.push({
           scenario: scenario.name,
           loss: stressVaR.var,
-          probability: 0.01, // 1% probability for stress scenarios
+          probability: 0.01,
           description: scenario.description
         });
         
@@ -357,69 +416,54 @@ export default function EnhancedVaRAnalyzer() {
     return stressResults;
   };
 
-  const performBacktest = (returnsMatrix, weights, varResults, confidenceLevel, positionSize) => {
-  try {
-    // Calculate portfolio returns
-    const portfolioReturns = [];
-    const minLength = Math.min(...returnsMatrix.map(r => r.length));
-    
-    for (let i = 0; i < minLength; i++) {
-      const portfolioReturn = returnsMatrix.reduce((sum, returns, assetIndex) => 
-        sum + weights[assetIndex] * returns[i], 0
-      );
-      portfolioReturns.push(portfolioReturn * positionSize);
-    }
-    
-    // Count exceedances (correct threshold)
-    const varThreshold = -Math.abs(varResults.var);
-    const exceedances = portfolioReturns.filter(pnl => pnl < varThreshold).length;
-    const exceedanceRate = (exceedances / portfolioReturns.length) * 100;
-    const expectedRate = (1 - confidenceLevel) * 100;
-    
-    // Improved Kupiec test calculation
-    let kupiecTest = 0;
-    if (portfolioReturns.length > 0 && exceedances >= 0) {
-      const p = 1 - confidenceLevel; // Expected exceedance rate
-      const n = portfolioReturns.length;
-      const x = exceedances;
-      
-      if (x === 0) {
-        // When no exceedances
-        kupiecTest = -2 * n * Math.log(1 - p);
-      } else if (x === n) {
-        // When all are exceedances  
-        kupiecTest = -2 * n * Math.log(p);
-      } else {
-        // Normal case
-        const pHat = x / n;
-        const likelihood1 = Math.pow(p, x) * Math.pow(1 - p, n - x);
-        const likelihood2 = Math.pow(pHat, x) * Math.pow(1 - pHat, n - x);
-        
-        if (likelihood1 > 0 && likelihood2 > 0) {
-          kupiecTest = -2 * Math.log(likelihood1 / likelihood2);
-        }
+  const performBacktest = (returnsMatrix: number[][], weights: number[], varResults: VaRResults, confidenceLevel: number, positionSize: number) => {
+    try {
+      // Get the VaR value to test against
+      let varThreshold = 0;
+      if (varResults.individualResults) {
+        varThreshold = varResults.individualResults.reduce((sum, r) => sum + r.var, 0);
+      } else if (varResults.portfolioResult) {
+        varThreshold = varResults.portfolioResult.var;
       }
+
+      // Calculate portfolio returns for backtesting
+      const portfolioReturns = [];
+      const minLength = Math.min(...returnsMatrix.map(r => r.length));
+      
+      for (let i = 0; i < minLength; i++) {
+        const portfolioReturn = returnsMatrix.reduce((sum, returns, assetIndex) => 
+          sum + weights[assetIndex] * returns[i], 0
+        );
+        portfolioReturns.push(portfolioReturn * positionSize);
+      }
+      
+      // Count exceedances
+      const exceedances = portfolioReturns.filter(pnl => pnl < -Math.abs(varThreshold)).length;
+      const exceedanceRate = (exceedances / portfolioReturns.length) * 100;
+      const expectedRate = (1 - confidenceLevel) * 100;
+      
+      // Kupiec test
+      const kupiecTest = VaRCalculator.calculateKupiecTest(exceedances, portfolioReturns.length, 1 - confidenceLevel);
+      
+      return {
+        exceedances: exceedances,
+        exceedanceRate: exceedanceRate,
+        expectedRate: expectedRate,
+        kupiecTest: kupiecTest,
+        totalObservations: portfolioReturns.length
+      };
+      
+    } catch (error) {
+      console.warn('Backtesting failed:', error.message);
+      return {
+        exceedances: 0,
+        exceedanceRate: 0,
+        expectedRate: (1 - confidenceLevel) * 100,
+        kupiecTest: 0,
+        totalObservations: 0
+      };
     }
-    
-    return {
-      exceedances: exceedances,
-      exceedanceRate: exceedanceRate,
-      expectedRate: expectedRate,
-      kupiecTest: Math.max(0, kupiecTest), // Ensure non-negative
-      totalObservations: portfolioReturns.length
-    };
-    
-  } catch (error) {
-    console.warn('Backtesting failed:', error.message);
-    return {
-      exceedances: 0,
-      exceedanceRate: 0,
-      expectedRate: (1 - confidenceLevel) * 100,
-      kupiecTest: 0,
-      totalObservations: 0
-    };
-  }
-};
+  };
 
   const TabButton = ({ tabKey, label, icon }: { tabKey: string; label: string; icon: string }) => (
     <TouchableOpacity
@@ -440,6 +484,23 @@ export default function EnhancedVaRAnalyzer() {
     return '#27AE60'; // Low risk - Green
   };
 
+  // Get total VaR for display
+  const getTotalVaR = (): number => {
+    if (!results) return 0;
+    if (results.individualResults) {
+      return results.individualResults.reduce((sum, r) => sum + r.var, 0);
+    }
+    return results.portfolioResult?.var || 0;
+  };
+
+  const getTotalES = (): number => {
+    if (!results) return 0;
+    if (results.individualResults) {
+      return results.individualResults.reduce((sum, r) => sum + r.expectedShortfall, 0);
+    }
+    return results.portfolioResult?.expectedShortfall || 0;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -447,7 +508,7 @@ export default function EnhancedVaRAnalyzer() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>VaR Analyzer</Text>
-          <Text style={styles.subtitle}>Professional Risk Management</Text>
+          <Text style={styles.subtitle}>Fixed Risk Management Analysis</Text>
           
           {/* System Health Indicator */}
           {dataHealth && (
@@ -522,7 +583,7 @@ export default function EnhancedVaRAnalyzer() {
           </View>
         </View>
 
-        {/* VaR Method Selection */}
+        {/* FIXED VaR Method Selection */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>VaR Methodology</Text>
           
@@ -540,12 +601,15 @@ export default function EnhancedVaRAnalyzer() {
                 <Text style={[styles.methodDescription, varMethod === method.key && styles.methodDescriptionActive]}>
                   {method.description}
                 </Text>
+                <Text style={[styles.methodType, varMethod === method.key && styles.methodTypeActive]}>
+                  {method.isIndividual ? 'Per Asset' : 'Portfolio Level'}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
           
           {/* Monte Carlo Simulations */}
-          {varMethod === 'monteCarlo' && (
+          {varMethod === 'monte_carlo' && (
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Simulations: {numSimulations.toLocaleString()}</Text>
               <Slider
@@ -582,15 +646,6 @@ export default function EnhancedVaRAnalyzer() {
               trackColor={{ false: '#E0E0E0', true: '#4A90E2' }}
             />
           </View>
-
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Calculate Component VaR</Text>
-            <Switch
-              value={calculateComponents}
-              onValueChange={setCalculateComponents}
-              trackColor={{ false: '#E0E0E0', true: '#27AE60' }}
-            />
-          </View>
         </View>
 
         {/* Analyze Button */}
@@ -606,7 +661,7 @@ export default function EnhancedVaRAnalyzer() {
           )}
         </TouchableOpacity>
 
-        {/* Results Section */}
+        {/* FIXED Results Section */}
         {results && (
           <View style={styles.resultsSection}>
             
@@ -621,50 +676,45 @@ export default function EnhancedVaRAnalyzer() {
             {/* Key Risk Metrics */}
             <View style={styles.metricsContainer}>
               <View style={styles.metricsRow}>
-                <View style={[styles.metricCard, { borderLeftColor: getVaRColor(results.var95, results.positionSize) }]}>
-                  <Text style={[styles.metricValue, { color: getVaRColor(results.var95, results.positionSize) }]}>
-                    ${(results.var95 / 1000).toFixed(0)}k
+                <View style={[styles.metricCard, { borderLeftColor: getVaRColor(getTotalVaR(), results.positionSize) }]}>
+                  <Text style={[styles.metricValue, { color: getVaRColor(getTotalVaR(), results.positionSize) }]}>
+                    ${(getTotalVaR() / 1000).toFixed(0)}k
                   </Text>
                   <Text style={styles.metricLabel}>{(results.confidenceLevel * 100).toFixed(0)}% VaR</Text>
                 </View>
-                <View style={[styles.metricCard, { borderLeftColor: '#E74C3C' }]}>
-                  <Text style={[styles.metricValue, { color: '#E74C3C' }]}>
-                    ${(results.var99 / 1000).toFixed(0)}k
-                  </Text>
-                  <Text style={styles.metricLabel}>99% VaR</Text>
-                </View>
-              </View>
-              
-              <View style={styles.metricsRow}>
                 <View style={[styles.metricCard, { borderLeftColor: '#9B59B6' }]}>
                   <Text style={[styles.metricValue, { color: '#9B59B6' }]}>
-                    ${(results.expectedShortfall / 1000).toFixed(0)}k
+                    ${(getTotalES() / 1000).toFixed(0)}k
                   </Text>
                   <Text style={styles.metricLabel}>Expected Shortfall</Text>
                 </View>
-                {results.diversificationBenefit !== undefined && (
+              </View>
+              
+              {results.portfolioResult?.diversificationBenefit !== undefined && (
+                <View style={styles.metricsRow}>
                   <View style={[styles.metricCard, { borderLeftColor: '#27AE60' }]}>
                     <Text style={[styles.metricValue, { color: '#27AE60' }]}>
-                      {(results.diversificationBenefit * 100).toFixed(1)}%
+                      {(results.portfolioResult.diversificationBenefit * 100).toFixed(1)}%
                     </Text>
                     <Text style={styles.metricLabel}>Diversification Benefit</Text>
                   </View>
-                )}
-              </View>
+                </View>
+              )}
             </View>
 
             {/* Results Tabs */}
             <View style={styles.tabContainer}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <TabButton tabKey="summary" label="Summary" icon="📊" />
-                <TabButton tabKey="components" label="Components" icon="🔍" />
-                <TabButton tabKey="stress" label="Stress Tests" icon="💥" />
-                <TabButton tabKey="backtest" label="Backtest" icon="📈" />
-                <TabButton tabKey="correlation" label="Correlation" icon="🔗" />
+                {results.individualResults && <TabButton tabKey="individual" label="Per Asset" icon="🎯" />}
+                {results.portfolioResult?.componentVaR && <TabButton tabKey="components" label="Components" icon="🔍" />}
+                {results.stressResults && <TabButton tabKey="stress" label="Stress Tests" icon="💥" />}
+                {results.backtestResults && <TabButton tabKey="backtest" label="Backtest" icon="📈" />}
+                {results.portfolioResult?.correlationMatrix && <TabButton tabKey="correlation" label="Correlation" icon="🔗" />}
               </ScrollView>
             </View>
 
-            {/* Tab Content */}
+            {/* FIXED Tab Content */}
             <View style={styles.tabContent}>
               {activeTab === 'summary' && (
                 <View>
@@ -672,26 +722,28 @@ export default function EnhancedVaRAnalyzer() {
                   
                   <View style={styles.summaryGrid}>
                     <View style={styles.summaryItem}>
-                      <Text style={styles.summaryLabel}>Daily VaR ({(results.confidenceLevel * 100).toFixed(0)}%)</Text>
-                      <Text style={styles.summaryValue}>${results.var95.toLocaleString()}</Text>
+                      <Text style={styles.summaryLabel}>Analysis Type</Text>
+                      <Text style={styles.summaryValue}>
+                        {varMethods.find(m => m.key === results.method)?.label}
+                      </Text>
                       <Text style={styles.summaryPercent}>
-                        {((results.var95 / results.positionSize) * 100).toFixed(2)}% of portfolio
+                        {varMethods.find(m => m.key === results.method)?.isIndividual ? 'Individual Assets' : 'Portfolio Level'}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.summaryItem}>
+                      <Text style={styles.summaryLabel}>Total VaR ({(results.confidenceLevel * 100).toFixed(0)}%)</Text>
+                      <Text style={styles.summaryValue}>${getTotalVaR().toLocaleString()}</Text>
+                      <Text style={styles.summaryPercent}>
+                        {((getTotalVaR() / results.positionSize) * 100).toFixed(2)}% of portfolio
                       </Text>
                     </View>
                     
                     <View style={styles.summaryItem}>
                       <Text style={styles.summaryLabel}>Expected Shortfall</Text>
-                      <Text style={styles.summaryValue}>${results.expectedShortfall.toLocaleString()}</Text>
+                      <Text style={styles.summaryValue}>${getTotalES().toLocaleString()}</Text>
                       <Text style={styles.summaryPercent}>
                         Average loss beyond VaR
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.summaryItem}>
-                      <Text style={styles.summaryLabel}>Risk Method</Text>
-                      <Text style={styles.summaryValue}>{varMethods.find(m => m.key === results.method)?.label}</Text>
-                      <Text style={styles.summaryPercent}>
-                        Calculation time: {results.metadata.calculationTime}ms
                       </Text>
                     </View>
                   </View>
@@ -700,17 +752,17 @@ export default function EnhancedVaRAnalyzer() {
                     <Text style={styles.interpretationTitle}>Risk Interpretation</Text>
                     <Text style={styles.interpretationText}>
                       With {(results.confidenceLevel * 100).toFixed(0)}% confidence, your maximum daily loss should not exceed{' '}
-                      <Text style={[styles.interpretationHighlight, { color: getVaRColor(results.var95, results.positionSize) }]}>
-                        ${(results.var95 / 1000).toFixed(0)}k
+                      <Text style={[styles.interpretationHighlight, { color: getVaRColor(getTotalVaR(), results.positionSize) }]}>
+                        ${(getTotalVaR() / 1000).toFixed(0)}k
                       </Text>{' '}
                       under normal market conditions.
                     </Text>
                     
-                    {results.diversificationBenefit && results.diversificationBenefit > 0.1 && (
+                    {results.portfolioResult?.diversificationBenefit && results.portfolioResult.diversificationBenefit > 0.1 && (
                       <Text style={styles.interpretationText}>
                         Your portfolio benefits from{' '}
                         <Text style={[styles.interpretationHighlight, { color: '#27AE60' }]}>
-                          {(results.diversificationBenefit * 100).toFixed(1)}% diversification
+                          {(results.portfolioResult.diversificationBenefit * 100).toFixed(1)}% diversification
                         </Text>
                         , reducing risk compared to concentrated positions.
                       </Text>
@@ -719,35 +771,60 @@ export default function EnhancedVaRAnalyzer() {
                 </View>
               )}
 
-              {activeTab === 'components' && results.componentVaR && (
-              <View>
-                <Text style={styles.chartTitle}>Component VaR Analysis</Text>
-                {results.tickers.map((ticker, index) => {
-                  // CORRECTION : Obtenir la valeur Component VaR correcte
-                  const componentValue = results.componentVaR[ticker] || 0;
-                  const componentPercent = results.var95 > 0 ? (componentValue / results.var95) * 100 : 0;
-                  
-                  return (
-                    <View key={ticker} style={styles.componentRow}>
-                      <Text style={styles.componentTicker}>{ticker}</Text>
+              {activeTab === 'individual' && results.individualResults && (
+                <View>
+                  <Text style={styles.chartTitle}>Individual Asset VaR</Text>
+                  {results.individualResults.map((assetResult, index) => (
+                    <View key={assetResult.ticker} style={styles.componentRow}>
+                      <Text style={styles.componentTicker}>{assetResult.ticker}</Text>
                       <View style={styles.componentMetrics}>
                         <Text style={styles.componentValue}>
-                          ${(componentValue / 1000).toFixed(1)}k
+                          ${(assetResult.var / 1000).toFixed(1)}k
                         </Text>
                         <Text style={styles.componentPercent}>
-                          {componentPercent.toFixed(1)}%
+                          VaR: {((assetResult.var / results.positionSize) * 100).toFixed(2)}%
+                        </Text>
+                        <Text style={styles.componentPercent}>
+                          ES: ${(assetResult.expectedShortfall / 1000).toFixed(1)}k
                         </Text>
                       </View>
-                      {results.marginalVaR && results.marginalVaR[index] && (
+                      {assetResult.volatility && (
                         <Text style={styles.marginalValue}>
-                          Marginal: {results.marginalVaR[index].toFixed(3)}
+                          Vol: {(assetResult.volatility * 100 * Math.sqrt(252)).toFixed(1)}%
                         </Text>
                       )}
                     </View>
-                  );
-                })}
+                  ))}
+                </View>
+              )}
 
-              </View>
+              {activeTab === 'components' && results.portfolioResult?.componentVaR && (
+                <View>
+                  <Text style={styles.chartTitle}>Component VaR Analysis</Text>
+                  {results.tickers.map((ticker, index) => {
+                    const componentValue = results.portfolioResult!.componentVaR![`Asset_${index}`] || 0;
+                    const componentPercent = getTotalVaR() > 0 ? (componentValue / getTotalVaR()) * 100 : 0;
+                    
+                    return (
+                      <View key={ticker} style={styles.componentRow}>
+                        <Text style={styles.componentTicker}>{ticker}</Text>
+                        <View style={styles.componentMetrics}>
+                          <Text style={styles.componentValue}>
+                            ${(componentValue / 1000).toFixed(1)}k
+                          </Text>
+                          <Text style={styles.componentPercent}>
+                            {componentPercent.toFixed(1)}%
+                          </Text>
+                        </View>
+                        {results.portfolioResult!.marginalVaR && results.portfolioResult!.marginalVaR[index] && (
+                          <Text style={styles.marginalValue}>
+                            Marginal: {results.portfolioResult!.marginalVaR[index].toFixed(3)}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
               )}
 
               {activeTab === 'stress' && results.stressResults && results.stressResults.length > 0 && (
@@ -768,69 +845,68 @@ export default function EnhancedVaRAnalyzer() {
               )}
 
               {activeTab === 'backtest' && results.backtestResults && (
-              <View>
-                <Text style={styles.chartTitle}>VaR Model Backtesting</Text>
-                
-                <View style={styles.backtestGrid}>
-                  <View style={styles.backtestItem}>
-                    <Text style={styles.backtestLabel}>Actual Exceedances</Text>
-                    <Text style={[styles.backtestValue, { 
-                      color: results.backtestResults.exceedanceRate > results.backtestResults.expectedRate * 1.5 ? '#E74C3C' : '#27AE60'
-                    }]}>
-                      {results.backtestResults.exceedances}
-                    </Text>
-                  </View>
+                <View>
+                  <Text style={styles.chartTitle}>VaR Model Backtesting</Text>
                   
-                  <View style={styles.backtestItem}>
-                    <Text style={styles.backtestLabel}>Exceedance Rate</Text>
-                    <Text style={styles.backtestValue}>
-                      {results.backtestResults.exceedanceRate.toFixed(3)}%
-                    </Text>
+                  <View style={styles.backtestGrid}>
+                    <View style={styles.backtestItem}>
+                      <Text style={styles.backtestLabel}>Actual Exceedances</Text>
+                      <Text style={[styles.backtestValue, { 
+                        color: results.backtestResults.exceedanceRate > results.backtestResults.expectedRate * 1.5 ? '#E74C3C' : '#27AE60'
+                      }]}>
+                        {results.backtestResults.exceedances}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.backtestItem}>
+                      <Text style={styles.backtestLabel}>Exceedance Rate</Text>
+                      <Text style={styles.backtestValue}>
+                        {results.backtestResults.exceedanceRate.toFixed(3)}%
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.backtestItem}>
+                      <Text style={styles.backtestLabel}>Expected Rate</Text>
+                      <Text style={styles.backtestValue}>
+                        {results.backtestResults.expectedRate.toFixed(3)}%
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.backtestItem}>
+                      <Text style={styles.backtestLabel}>Kupiec Test</Text>
+                      <Text style={[styles.backtestValue, { 
+                        color: results.backtestResults.kupiecTest > 3.84 ? '#E74C3C' : '#27AE60'
+                      }]}>
+                        {results.backtestResults.kupiecTest.toFixed(3)}
+                      </Text>
+                    </View>
                   </View>
-                  
-                  <View style={styles.backtestItem}>
-                    <Text style={styles.backtestLabel}>Expected Rate</Text>
-                    <Text style={styles.backtestValue}>
-                      {results.backtestResults.expectedRate.toFixed(3)}%
+
+                  <View style={styles.backtestInterpretation}>
+                    <Text style={styles.interpretationTitle}>Backtest Assessment</Text>
+                    <Text style={styles.interpretationText}>
+                      {results.backtestResults.kupiecTest <= 3.84 ? 
+                        '✅ Model passes Kupiec test - VaR estimates are statistically accurate' :
+                        '❌ Model fails Kupiec test - VaR may be underestimating risk'
+                      }
                     </Text>
-                  </View>
-                  
-                  <View style={styles.backtestItem}>
-                    <Text style={styles.backtestLabel}>Kupiec Test</Text>
-                    <Text style={[styles.backtestValue, { 
-                      color: results.backtestResults.kupiecTest > 3.84 ? '#E74C3C' : '#27AE60'
-                    }]}>
-                      {results.backtestResults.kupiecTest.toFixed(3)}
+                    <Text style={styles.interpretationText}>
+                      Critical value (95% confidence): 3.84
+                    </Text>
+                    <Text style={styles.interpretationText}>
+                      Test statistic: {results.backtestResults.kupiecTest.toFixed(3)}
+                    </Text>
+                    <Text style={styles.interpretationText}>
+                      Observations: {results.backtestResults.totalObservations}
                     </Text>
                   </View>
                 </View>
-            
-                <View style={styles.backtestInterpretation}>
-                  <Text style={styles.interpretationTitle}>Backtest Assessment</Text>
-                  <Text style={styles.interpretationText}>
-                    {results.backtestResults.kupiecTest <= 3.84 ? 
-                      '✅ Model passes Kupiec test - VaR estimates are statistically accurate' :
-                      '❌ Model fails Kupiec test - VaR may be underestimating risk'
-                    }
-                  </Text>
-                  <Text style={styles.interpretationText}>
-                    Critical value (95% confidence): 3.84
-                  </Text>
-                  <Text style={styles.interpretationText}>
-                    Test statistic: {results.backtestResults.kupiecTest.toFixed(3)}
-                  </Text>
-                  <Text style={styles.interpretationText}>
-                    Observations: {results.backtestResults.totalObservations}
-                  </Text>
-                </View>
-              </View>
-            )}
+              )}
 
-
-              {activeTab === 'correlation' && results.correlationMatrix && (
+              {activeTab === 'correlation' && results.portfolioResult?.correlationMatrix && (
                 <View>
                   <CorrelationMatrixChart
-                    correlationMatrix={results.correlationMatrix}
+                    correlationMatrix={results.portfolioResult.correlationMatrix}
                     tickers={results.tickers}
                     title="Asset Correlation Matrix"
                   />
@@ -844,6 +920,7 @@ export default function EnhancedVaRAnalyzer() {
               <Text style={styles.metadataText}>Data source: {results.metadata.dataSource}</Text>
               <Text style={styles.metadataText}>Calculation time: {results.metadata.calculationTime}ms</Text>
               <Text style={styles.metadataText}>Analysis completed: {new Date().toLocaleString()}</Text>
+              <Text style={styles.metadataText}>Method: {varMethods.find(m => m.key === results.method)?.description}</Text>
             </View>
           </View>
         )}
@@ -942,7 +1019,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#E0E0E0',
-    minWidth: 140,
+    minWidth: 160,
   },
   methodCardActive: {
     backgroundColor: '#E74C3C',
@@ -967,8 +1044,18 @@ const styles = StyleSheet.create({
     color: '#7F8C8D',
     textAlign: 'center',
     lineHeight: 14,
+    marginBottom: 4,
   },
   methodDescriptionActive: {
+    color: '#FFFFFF',
+  },
+  methodType: {
+    fontSize: 10,
+    color: '#95A5A6',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  methodTypeActive: {
     color: '#FFFFFF',
   },
   switchRow: {
@@ -1258,31 +1345,6 @@ const styles = StyleSheet.create({
     color: '#2C3E50',
     marginBottom: 8,
   },
-  validationBox: {
-  backgroundColor: '#F0F8FF',
-  padding: 15,
-  borderRadius: 8,
-  marginTop: 20,
-  borderLeftWidth: 4,
-  borderLeftColor: '#4A90E2',
-},
-validationTitle: {
-  fontSize: 16,
-  fontWeight: '600',
-  color: '#2C3E50',
-  marginBottom: 8,
-},
-validationText: {
-  fontSize: 14,
-  color: '#34495E',
-  marginBottom: 4,
-},
-validationWarning: {
-  fontSize: 14,
-  color: '#E74C3C',
-  fontWeight: '600',
-  marginTop: 8,
-},
   metadataText: {
     fontSize: 14,
     color: '#7F8C8D',
