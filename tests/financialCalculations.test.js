@@ -1,10 +1,4 @@
-const path = require('path');
-let VaRCalculator;
-let PortfolioOptimizer;
-
-beforeAll(async () => {
-  ({ VaRCalculator, PortfolioOptimizer } = await import(path.resolve(__dirname, '../src/utils/financialCalculations.js')));
-});
+import { VaRCalculator, PortfolioOptimizer } from '../src/utils/financialCalculations.js';
 
 describe('VaRCalculator.calculateIndividualParametricVaR', () => {
   const goodReturns = Array.from({ length: 60 }, (_, i) => Math.sin(i) / 100);
