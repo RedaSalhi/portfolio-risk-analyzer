@@ -2,7 +2,7 @@ import {
   VaRCalculator,
   PortfolioOptimizer,
   CorrelationCalculator
-} from '../src/utils/financialCalculations.js';
+} from '../src/utils/financialCalculations';
 
 describe('VaRCalculator - Edge Cases and Fixes', () => {
   // Test data generators
