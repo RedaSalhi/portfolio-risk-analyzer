@@ -32,6 +32,21 @@ ALPHAVANTAGE_API_KEY=your_alpha_vantage_key
 IEX_API_KEY=your_iex_cloud_key
 ```
 
+## Python data pipeline
+
+The repository also contains `data_pipeline.py` for fetching and analyzing
+financial data. Create a virtual environment and install the Python
+dependencies with:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+After activating the environment you can run the pipeline or related scripts.
+Deactivate the environment with `deactivate` when finished.
+
 ## Learn more
 
 - [Expo documentation](https://docs.expo.dev/)
