@@ -179,6 +179,52 @@ export default function BeautifulPortfolioOptimizer() {
     }).start();
   };
 
+  const validatePortfolioInputs = () => {
+    const errors = [];
+    
+    // Validate tickers
+    const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
+    if (tickerList.length < 2) {
+      errors.push('At least 2 ticker symbols are required for portfolio optimization');
+    }
+    if (tickerList.length > 10) {
+      errors.push('Maximum 10 ticker symbols allowed for mobile optimization');
+    }
+    
+    // Validate ticker format
+    const invalidTickers = tickerList.filter(t => !/^[A-Z^]{1,6}$/.test(t));
+    if (invalidTickers.length > 0) {
+      errors.push(`Invalid ticker symbols: ${invalidTickers.join(', ')}`);
+    }
+    
+    // Validate portfolio value
+    if (portfolioValue < 1000 || portfolioValue > 100000000) {
+      errors.push('Portfolio value must be between $1,000 and $100,000,000');
+    }
+    
+    // Validate target return (if using targetReturn method)
+    if (optimizationMethod === 'targetReturn' && (targetReturn < 0.01 || targetReturn > 1.0)) {
+      errors.push('Target return must be between 1% and 100%');
+    }
+    
+    // Validate target risk (if using targetRisk method)
+    if (optimizationMethod === 'targetRisk' && (targetRisk < 0.01 || targetRisk > 1.0)) {
+      errors.push('Target risk must be between 1% and 100%');
+    }
+    
+    // Validate Monte Carlo simulations
+    if (monteCarloSimulations < 100 || monteCarloSimulations > 100000) {
+      errors.push('Monte Carlo simulations must be between 100 and 100,000');
+    }
+    
+    // Validate max position size
+    if (maxPositionSize < 0.05 || maxPositionSize > 1.0) {
+      errors.push('Maximum position size must be between 5% and 100%');
+    }
+    
+    return errors;
+  };
+    
   // 6. FIX: Enhanced error boundary for mathematical calculations
   const runOptimization = async () => {
     // Validate inputs first
