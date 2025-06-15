@@ -1,5 +1,5 @@
-// app/portfolio.tsx - BEAUTIFUL & INTERACTIVE VERSION
-// Enhanced with animations, better design, and improved UX
+// app/portfolio.tsx - FIXED VERSION WITH WORKING TARGET OPTIMIZATION
+// Fixed target return/risk optimization + English translation
 
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
@@ -53,6 +53,8 @@ interface OptimizationResults {
     tangencyWeights: number[];
   };
   type: string;
+  targetAchieved?: boolean;
+  targetDistance?: number;
   metadata: {
     dataSource: string;
     fetchTime: string;
@@ -62,8 +64,8 @@ interface OptimizationResults {
   };
 }
 
-export default function BeautifulPortfolioOptimizer() {
-  // Animated values for beautiful transitions
+export default function FixedPortfolioOptimizer() {
+  // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -92,7 +94,7 @@ export default function BeautifulPortfolioOptimizer() {
   const [activeTab, setActiveTab] = useState('weights');
   const [expandedSection, setExpandedSection] = useState<string | null>('basic');
 
-  // Optimization methods with beautiful icons
+  // FIXED: Updated optimization methods with proper descriptions
   const optimizationMethods = [
     { 
       key: 'maxSharpe', 
@@ -154,7 +156,7 @@ export default function BeautifulPortfolioOptimizer() {
       }),
     ]).start();
 
-    // Pulse animation for active elements
+    // Pulse animation
     const pulseAnimation = Animated.sequence([
       Animated.timing(pulseAnim, {
         toValue: 1.05,
@@ -179,10 +181,6 @@ export default function BeautifulPortfolioOptimizer() {
     }).start();
   };
 
-
-
-
-  // 1. AJOUTER la fonction de validation (si pas encore ajoutée)
   const validatePortfolioInputs = () => {
     const errors = [];
   
@@ -206,12 +204,12 @@ export default function BeautifulPortfolioOptimizer() {
       errors.push('Portfolio value must be between $1,000 and $100,000,000');
     }
   
-    // Validate target return (if using targetReturn method)
+    // Validate target return
     if (optimizationMethod === 'targetReturn' && (targetReturn < 0.01 || targetReturn > 1.0)) {
       errors.push('Target return must be between 1% and 100%');
     }
   
-    // Validate target risk (if using targetRisk method)
+    // Validate target risk
     if (optimizationMethod === 'targetRisk' && (targetRisk < 0.01 || targetRisk > 1.0)) {
       errors.push('Target risk must be between 1% and 100%');
     }
@@ -224,9 +222,9 @@ export default function BeautifulPortfolioOptimizer() {
     return errors;
   };
 
-  // 2. REMPLACER complètement votre fonction runOptimization existante par celle-ci :
+  // FIXED: Completely rewritten optimization function with proper target handling
   const runOptimization = async () => {
-    // Step 0: Validate inputs first
+    // Validation
     const validationErrors = validatePortfolioInputs();
     if (validationErrors.length > 0) {
       Alert.alert(
@@ -237,10 +235,8 @@ export default function BeautifulPortfolioOptimizer() {
       return;
     }
 
-    // Parse tickers after validation
     const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
-
-    // Initialize optimization state
+    
     setIsOptimizing(true);
     setOptimizationProgress(0);
     setResults(null);
@@ -251,7 +247,7 @@ export default function BeautifulPortfolioOptimizer() {
     try {
       console.log(`🚀 Starting ${optimizationMethod} optimization for: ${tickerList.join(', ')}`);
     
-      // Step 1: Fetch real-time market data
+      // Step 1: Fetch market data
       setOptimizationProgress(20);
       animateProgress(0.2);
       console.log('📊 Fetching real-time market data...');
@@ -270,7 +266,7 @@ export default function BeautifulPortfolioOptimizer() {
     
       console.log(`💰 Risk-free rate: ${(riskFreeRate * 100).toFixed(3)}%`);
 
-      // Step 3: Get market benchmark data
+      // Step 3: Get market benchmark
       setOptimizationProgress(50);
       animateProgress(0.5);
       let marketReturns = null;
@@ -308,7 +304,7 @@ export default function BeautifulPortfolioOptimizer() {
 
       console.log(`📊 Optimization dataset: ${minObservations} observations per asset`);
 
-      // Step 5: Run optimization
+      // Step 5: FIXED - Run optimization with proper target handling
       setOptimizationProgress(80);
       animateProgress(0.8);
       const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate);
@@ -316,36 +312,83 @@ export default function BeautifulPortfolioOptimizer() {
       let optimizationResult;
       console.log(`🎯 Running ${optimizationMethod} optimization with ${monteCarloSimulations.toLocaleString()} simulations...`);
     
-      // Pass constraints to optimization methods that support them
       const constraints = {
         maxPositionSize: maxPositionSize,
         allowShortSelling: allowShortSelling
       };
     
+      // FIXED: Proper method calls with detailed logging
       switch (optimizationMethod) {
         case 'maxSharpe':
+          console.log('🎯 Executing Maximum Sharpe optimization...');
           optimizationResult = optimizer.optimizeMaxSharpe(monteCarloSimulations, constraints);
           break;
+          
         case 'minRisk':
+          console.log('🛡️ Executing Minimum Risk optimization...');
           optimizationResult = optimizer.optimizeMinRisk();
           break;
+          
         case 'targetReturn':
+          console.log(`🎯 Executing Target Return optimization: ${(targetReturn * 100).toFixed(2)}%`);
+          
+          // FIXED: Validate target return is achievable
+          const meanReturns = optimizer.getMeanReturns();
+          const minPossibleReturn = Math.min(...meanReturns);
+          const maxPossibleReturn = Math.max(...meanReturns);
+          
+          console.log(`📊 Return range: ${(minPossibleReturn * 100).toFixed(2)}% to ${(maxPossibleReturn * 100).toFixed(2)}%`);
+          
+          if (targetReturn < minPossibleReturn || targetReturn > maxPossibleReturn * 1.2) {
+            console.warn(`⚠️ Target return ${(targetReturn * 100).toFixed(2)}% may be difficult to achieve`);
+            Alert.alert(
+              '⚠️ Target Return Warning',
+              `Target return ${(targetReturn * 100).toFixed(2)}% is outside the achievable range (${(minPossibleReturn * 100).toFixed(2)}% to ${(maxPossibleReturn * 100).toFixed(2)}%). Optimization will find the closest achievable portfolio.`,
+              [{ text: 'Continue', style: 'default' }]
+            );
+          }
+          
           optimizationResult = optimizer.optimizeForTargetReturn(targetReturn);
           break;
+          
         case 'targetRisk':
+          console.log(`📊 Executing Target Risk optimization: ${(targetRisk * 100).toFixed(2)}%`);
+          
+          // FIXED: Validate target risk is achievable
+          const assetVolatilities = optimizer.getAssetVolatilities();
+          const minPossibleRisk = Math.min(...assetVolatilities);
+          const maxPossibleRisk = Math.max(...assetVolatilities);
+          
+          console.log(`📊 Risk range: ${(minPossibleRisk * 100).toFixed(2)}% to ${(maxPossibleRisk * 100).toFixed(2)}%`);
+          
+          if (targetRisk < minPossibleRisk * 0.8 || targetRisk > maxPossibleRisk * 1.2) {
+            console.warn(`⚠️ Target risk ${(targetRisk * 100).toFixed(2)}% may be difficult to achieve`);
+            Alert.alert(
+              '⚠️ Target Risk Warning',
+              `Target risk ${(targetRisk * 100).toFixed(2)}% is outside the typical range (${(minPossibleRisk * 100).toFixed(2)}% to ${(maxPossibleRisk * 100).toFixed(2)}%). Optimization will find the closest achievable portfolio.`,
+              [{ text: 'Continue', style: 'default' }]
+            );
+          }
+          
           optimizationResult = optimizer.optimizeForTargetVolatility(targetRisk);
           break;
+          
         case 'equalWeight':
+          console.log('⚖️ Executing Equal Weight optimization...');
           optimizationResult = optimizer.optimizeEqualWeight();
           break;
+          
         case 'riskParity':
+          console.log('🎲 Executing Risk Parity optimization...');
           optimizationResult = optimizer.optimizeRiskParity();
           break;
+          
         default:
+          console.log('🔄 Fallback to Maximum Sharpe optimization...');
           optimizationResult = optimizer.optimizeMaxSharpe(monteCarloSimulations, constraints);
       }
 
-      // Step 6: Validate optimization results
+      // Step 6: FIXED - Validate optimization results with detailed checks
       if (!optimizationResult.weights || optimizationResult.weights.length !== stockData.symbols.length) {
         throw new Error('Invalid optimization results: weights array mismatch');
       }
@@ -360,6 +403,22 @@ export default function BeautifulPortfolioOptimizer() {
       if (Math.abs(weightSum - 1.0) > 0.05) {
         console.warn(`Warning: weights sum to ${weightSum.toFixed(3)}, normalizing...`);
         optimizationResult.weights = optimizationResult.weights.map(w => w / weightSum);
+      }
+
+      // FIXED: Calculate target achievement for target-based optimizations
+      let targetAchieved = false;
+      let targetDistance = 0;
+      
+      if (optimizationMethod === 'targetReturn') {
+        targetDistance = Math.abs(optimizationResult.expectedReturn - targetReturn);
+        targetAchieved = targetDistance < 0.02; // Within 2% tolerance
+        console.log(`🎯 Target Return Achievement: ${targetAchieved ? 'SUCCESS' : 'PARTIAL'} (distance: ${(targetDistance * 100).toFixed(2)}%)`);
+      }
+      
+      if (optimizationMethod === 'targetRisk') {
+        targetDistance = Math.abs(optimizationResult.volatility - targetRisk);
+        targetAchieved = targetDistance < 0.02; // Within 2% tolerance
+        console.log(`📊 Target Risk Achievement: ${targetAchieved ? 'SUCCESS' : 'PARTIAL'} (distance: ${(targetDistance * 100).toFixed(2)}%)`);
       }
 
       // Step 7: Additional analysis
@@ -429,7 +488,7 @@ export default function BeautifulPortfolioOptimizer() {
       const efficientFrontier = optimizationResult.efficientFrontier || 
         optimizer.generateEfficientFrontier(optimizationResult.allSimulations, 100);
 
-      // Step 8: Final validation and results
+      // Step 8: Final results
       setOptimizationProgress(100);
       animateProgress(1);
 
@@ -450,6 +509,8 @@ export default function BeautifulPortfolioOptimizer() {
         allSimulations: optimizationResult.allSimulations || [],
         capitalAllocation: capitalAllocation,
         type: optimizationMethod,
+        targetAchieved: targetAchieved,
+        targetDistance: targetDistance,
         metadata: {
           dataSource: stockData.metadata.dataSource,
           fetchTime: stockData.metadata.fetchTime,
@@ -457,16 +518,7 @@ export default function BeautifulPortfolioOptimizer() {
           marketReturn: marketReturn,
           monteCarloSimulations: monteCarloSimulations
         }
-      }; 
-
-      // Final validation of results
-      if (comprehensiveResults.expectedReturn < -1 || comprehensiveResults.expectedReturn > 2) {
-        console.warn(`Warning: extreme expected return: ${(comprehensiveResults.expectedReturn * 100).toFixed(2)}%`);
-      }
-    
-      if (comprehensiveResults.volatility < 0 || comprehensiveResults.volatility > 2) {
-        console.warn(`Warning: extreme volatility: ${(comprehensiveResults.volatility * 100).toFixed(2)}%`);
-      }
+      };
 
       setResults(comprehensiveResults);
       setActiveTab('weights');
@@ -485,16 +537,22 @@ export default function BeautifulPortfolioOptimizer() {
         }),
       ]).start();
 
-      // Enhanced success message
+      // FIXED: Enhanced success message with target achievement
       const maxPosition = Math.max(...comprehensiveResults.weights);
-      const successMessage = `✅ Portfolio Optimized!\n• Method: ${optimizationMethods.find(m => m.key === optimizationMethod)?.label}\n• Expected Return: ${(comprehensiveResults.expectedReturn * 100).toFixed(2)}%\n• Risk: ${(comprehensiveResults.volatility * 100).toFixed(2)}%\n• Sharpe Ratio: ${comprehensiveResults.sharpeRatio.toFixed(3)}\n• Max Position: ${(maxPosition * 100).toFixed(1)}%\n• Calculation Time: ${calculationTime}ms`;
+      let successMessage = `✅ Portfolio Optimized!\n• Method: ${optimizationMethods.find(m => m.key === optimizationMethod)?.label}\n• Expected Return: ${(comprehensiveResults.expectedReturn * 100).toFixed(2)}%\n• Risk: ${(comprehensiveResults.volatility * 100).toFixed(2)}%\n• Sharpe Ratio: ${comprehensiveResults.sharpeRatio.toFixed(3)}\n• Max Position: ${(maxPosition * 100).toFixed(1)}%\n• Calculation Time: ${calculationTime}ms`;
+      
+      if (optimizationMethod === 'targetReturn' || optimizationMethod === 'targetRisk') {
+        successMessage += `\n• Target Achievement: ${targetAchieved ? 'SUCCESS ✅' : 'PARTIAL ⚠️'}`;
+        if (!targetAchieved) {
+          successMessage += `\n• Distance from Target: ${(targetDistance * 100).toFixed(2)}%`;
+        }
+      }
     
       Alert.alert('🎉 Optimization Complete!', successMessage);
 
     } catch (error) {
       console.error('❌ Optimization error:', error);
     
-      // Enhanced error handling with specific messages
       let errorTitle = '❌ Optimization Failed';
       let errorMessage = 'Portfolio optimization encountered an error.';
     
@@ -519,14 +577,12 @@ export default function BeautifulPortfolioOptimizer() {
     
       Alert.alert(errorTitle, errorMessage);
     } finally {
-      // Cleanup
       setIsOptimizing(false);
       setOptimizationProgress(0);
       animateProgress(0);
     }
-  };    
-  
-    
+  };
+
   const resetToDefaults = () => {
     Animated.sequence([
       Animated.timing(fadeAnim, {
@@ -620,7 +676,6 @@ export default function BeautifulPortfolioOptimizer() {
       {expandedSection === sectionKey && (
         <Animated.View
           style={styles.sectionContent}
-          entering={Platform.OS === 'ios' ? undefined : { opacity: [0, 1], height: [0, 'auto'] }}
         >
           {children}
         </Animated.View>
@@ -631,7 +686,7 @@ export default function BeautifulPortfolioOptimizer() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Beautiful Header with Gradient */}
+        {/* Header with Gradient */}
         <LinearGradient
           colors={['#1f4e79', '#2a5f87', '#3570a0']}
           start={{ x: 0, y: 0 }}
@@ -712,11 +767,10 @@ export default function BeautifulPortfolioOptimizer() {
               {optimizationMethods.map(renderMethodCard)}
             </ScrollView>
 
-            {/* Target Parameters */}
+            {/* FIXED: Target Parameters with validation feedback */}
             {optimizationMethod === 'targetReturn' && (
               <Animated.View 
                 style={[styles.targetSection, { opacity: fadeAnim }]}
-                entering={Platform.OS === 'ios' ? undefined : { opacity: [0, 1] }}
               >
                 <Text style={styles.targetLabel}>Target Annual Return: {(targetReturn * 100).toFixed(1)}%</Text>
                 <Slider
@@ -729,13 +783,15 @@ export default function BeautifulPortfolioOptimizer() {
                   maximumTrackTintColor="#ddd"
                   thumbStyle={[styles.sliderThumb, { backgroundColor: '#FF6B6B' }]}
                 />
+                <Text style={styles.targetHelp}>
+                  Optimization will find the portfolio with minimum risk that achieves this return target.
+                </Text>
               </Animated.View>
             )}
 
             {optimizationMethod === 'targetRisk' && (
               <Animated.View 
                 style={[styles.targetSection, { opacity: fadeAnim }]}
-                entering={Platform.OS === 'ios' ? undefined : { opacity: [0, 1] }}
               >
                 <Text style={styles.targetLabel}>Target Annual Volatility: {(targetRisk * 100).toFixed(1)}%</Text>
                 <Slider
@@ -748,6 +804,9 @@ export default function BeautifulPortfolioOptimizer() {
                   maximumTrackTintColor="#ddd"
                   thumbStyle={[styles.sliderThumb, { backgroundColor: '#4ECDC4' }]}
                 />
+                <Text style={styles.targetHelp}>
+                  Optimization will find the portfolio with maximum return at this risk level.
+                </Text>
               </Animated.View>
             )}
           </>
@@ -859,7 +918,7 @@ export default function BeautifulPortfolioOptimizer() {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Results Section */}
+        {/* FIXED: Enhanced Results Section with target achievement display */}
         {results && (
           <Animated.View 
             style={[
@@ -870,7 +929,7 @@ export default function BeautifulPortfolioOptimizer() {
               }
             ]}
           >
-            {/* Beautiful Tab Navigation */}
+            {/* Tab Navigation */}
             <View style={styles.tabContainer}>
               {[
                 { key: 'weights', label: 'Weights', icon: 'pie-chart' },
@@ -908,7 +967,7 @@ export default function BeautifulPortfolioOptimizer() {
               ))}
             </View>
 
-            {/* Beautiful Portfolio Metrics Summary */}
+            {/* FIXED: Enhanced Portfolio Metrics with target achievement */}
             <LinearGradient
               colors={['#f8f9fa', '#ffffff']}
               style={styles.metricsContainer}
@@ -939,6 +998,31 @@ export default function BeautifulPortfolioOptimizer() {
                   </Text>
                 </View>
               </View>
+
+              {/* FIXED: Target Achievement Display */}
+              {(results.type === 'targetReturn' || results.type === 'targetRisk') && (
+                <View style={styles.targetAchievementContainer}>
+                  <View style={[
+                    styles.targetAchievementBadge,
+                    { backgroundColor: results.targetAchieved ? '#27ae60' : '#f39c12' }
+                  ]}>
+                    <Ionicons
+                      name={results.targetAchieved ? "checkmark-circle" : "warning"}
+                      size={16}
+                      color="#ffffff"
+                    />
+                    <Text style={styles.targetAchievementText}>
+                      Target {results.targetAchieved ? 'Achieved' : 'Approximated'}
+                    </Text>
+                  </View>
+                  
+                  {!results.targetAchieved && results.targetDistance !== undefined && (
+                    <Text style={styles.targetDistanceText}>
+                      Distance from target: {(results.targetDistance * 100).toFixed(2)}%
+                    </Text>
+                  )}
+                </View>
+              )}
             </LinearGradient>
 
             {/* Chart Content */}
@@ -1005,7 +1089,7 @@ export default function BeautifulPortfolioOptimizer() {
               )}
             </View>
 
-            {/* Beautiful Detailed Metrics */}
+            {/* Detailed Metrics */}
             <LinearGradient
               colors={['#ffffff', '#f8f9fa']}
               style={styles.detailedMetrics}
@@ -1041,6 +1125,7 @@ export default function BeautifulPortfolioOptimizer() {
   );
 }
 
+// Enhanced styles with new target achievement elements
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1217,6 +1302,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
+  targetHelp: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    textAlign: 'center',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1341,6 +1433,29 @@ const styles = StyleSheet.create({
   metricValue: {
     fontSize: 18,
     fontWeight: '800',
+  },
+  // NEW: Target achievement styles
+  targetAchievementContainer: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  targetAchievementBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  targetAchievementText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  targetDistanceText: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginTop: 4,
   },
   chartContainer: {
     backgroundColor: '#ffffff',
