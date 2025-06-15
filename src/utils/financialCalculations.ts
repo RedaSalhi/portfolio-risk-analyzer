@@ -30,54 +30,6 @@ function covariance(arr1: number[], arr2: number[]): number {
 }
 
 
-// Fixed Portfolio Optimizer with proper Target Risk/Return optimization
-// This replaces the broken methods in src/utils/financialCalculations.ts
-
-export class FixedPortfolioOptimizer {
-  private returns: number[][];
-  private riskFreeRate: number;
-  private covarianceMatrix: number[][];
-  private meanReturns: number[];
-
-  constructor(returns: number[][], riskFreeRate: number = 0.02) {
-    this.returns = returns;
-    this.riskFreeRate = riskFreeRate;
-    this.calculateStatistics();
-  }
-
-  private calculateStatistics() {
-    const n = this.returns.length;
-    const observations = this.returns[0].length;
-    
-    // Calculate mean returns
-    this.meanReturns = this.returns.map(assetReturns => 
-      assetReturns.reduce((sum, r) => sum + r, 0) / observations
-    );
-
-    // Calculate covariance matrix
-    this.covarianceMatrix = this.calculateCovarianceMatrix();
-  }
-
-  private calculateCovarianceMatrix(): number[][] {
-    const n = this.returns.length;
-    const observations = this.returns[0].length;
-    const covMatrix: number[][] = Array(n).fill(null).map(() => Array(n).fill(0));
-
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        let covariance = 0;
-        for (let k = 0; k < observations; k++) {
-          covariance += (this.returns[i][k] - this.meanReturns[i]) * 
-                       (this.returns[j][k] - this.meanReturns[j]);
-        }
-        covMatrix[i][j] = covariance / (observations - 1);
-      }
-    }
-    return covMatrix;
-  }
-
-
-
 
 // FIXED: Portfolio Optimizer with proper instance methods
 export class PortfolioOptimizer {
