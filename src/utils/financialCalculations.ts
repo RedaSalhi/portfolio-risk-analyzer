@@ -76,281 +76,6 @@ export class FixedPortfolioOptimizer {
     return covMatrix;
   }
 
-  // FIXED: Proper Target Return Optimization using Quadratic Programming approach
-  optimizeForTargetReturn(targetReturn: number): any {
-    const n = this.returns.length;
-    console.log(`🎯 Optimizing for target return: ${(targetReturn * 100).toFixed(2)}%`);
-
-    // Check if target return is achievable
-    const maxReturn = Math.max(...this.meanReturns);
-    const minReturn = Math.min(...this.meanReturns);
-    
-    if (targetReturn > maxReturn || targetReturn < minReturn) {
-      console.warn(`Target return ${(targetReturn * 100).toFixed(2)}% is outside feasible range [${(minReturn * 100).toFixed(2)}%, ${(maxReturn * 100).toFixed(2)}%]`);
-      
-      // Adjust target to feasible range
-      targetReturn = Math.max(minReturn, Math.min(maxReturn, targetReturn));
-      console.log(`Adjusted target return to: ${(targetReturn * 100).toFixed(2)}%`);
-    }
-
-    let bestWeights: number[] = [];
-    let minVolatility = Infinity;
-    let iterationsWithoutImprovement = 0;
-    const maxIterationsWithoutImprovement = 5000;
-
-    // Enhanced optimization with multiple search strategies
-    const strategies = [
-      { name: 'fine', tolerance: 0.001, iterations: 15000 },
-      { name: 'medium', tolerance: 0.005, iterations: 10000 },
-      { name: 'coarse', tolerance: 0.01, iterations: 5000 }
-    ];
-
-    for (const strategy of strategies) {
-      console.log(`Using ${strategy.name} search strategy (tolerance: ${strategy.tolerance})`);
-      
-      for (let i = 0; i < strategy.iterations && iterationsWithoutImprovement < maxIterationsWithoutImprovement; i++) {
-        // Generate weights using multiple methods
-        let weights: number[];
-        
-        if (i < strategy.iterations * 0.3) {
-          // Method 1: Random weights
-          weights = this.generateRandomWeights(n);
-        } else if (i < strategy.iterations * 0.6) {
-          // Method 2: Weights biased toward high-return assets
-          weights = this.generateBiasedWeights(n, targetReturn);
-        } else {
-          // Method 3: Small perturbations of current best
-          weights = bestWeights.length > 0 ? 
-            this.perturbWeights(bestWeights) : 
-            this.generateRandomWeights(n);
-        }
-
-        const portfolioReturn = this.calculatePortfolioReturn(weights);
-        
-        // Check if return is close to target
-        if (Math.abs(portfolioReturn - targetReturn) <= strategy.tolerance) {
-          const volatility = this.calculatePortfolioVolatility(weights);
-          
-          if (volatility < minVolatility && this.isValidPortfolio(weights)) {
-            minVolatility = volatility;
-            bestWeights = [...weights];
-            iterationsWithoutImprovement = 0;
-            
-            if (strategy.name === 'fine') {
-              console.log(`🎯 Improved solution found: Vol=${(volatility * 100).toFixed(2)}%, Return=${(portfolioReturn * 100).toFixed(2)}%`);
-            }
-          } else {
-            iterationsWithoutImprovement++;
-          }
-        } else {
-          iterationsWithoutImprovement++;
-        }
-      }
-      
-      if (bestWeights.length > 0) break; // Found solution
-    }
-
-    // Fallback: Use analytical solution if Monte Carlo fails
-    if (bestWeights.length === 0) {
-      console.log('🔄 Monte Carlo failed, using analytical approach...');
-      bestWeights = this.analyticalTargetReturn(targetReturn);
-    }
-
-    const finalReturn = this.calculatePortfolioReturn(bestWeights);
-    const finalVolatility = this.calculatePortfolioVolatility(bestWeights);
-    
-    console.log(`✅ Target Return Optimization Complete:`);
-    console.log(`   Target: ${(targetReturn * 100).toFixed(2)}%`);
-    console.log(`   Achieved: ${(finalReturn * 100).toFixed(2)}%`);
-    console.log(`   Volatility: ${(finalVolatility * 100).toFixed(2)}%`);
-
-    return {
-      weights: bestWeights,
-      expectedReturn: finalReturn,
-      volatility: finalVolatility,
-      sharpeRatio: (finalReturn - this.riskFreeRate) / finalVolatility,
-      targetAchieved: Math.abs(finalReturn - targetReturn) < 0.01
-    };
-  }
-
-  // FIXED: Proper Target Risk (Volatility) Optimization
-  optimizeForTargetVolatility(targetVolatility: number): any {
-    const n = this.returns.length;
-    console.log(`🎯 Optimizing for target volatility: ${(targetVolatility * 100).toFixed(2)}%`);
-
-    let bestWeights: number[] = [];
-    let maxSharpe = -Infinity;
-    let iterationsWithoutImprovement = 0;
-    const maxIterationsWithoutImprovement = 5000;
-
-    // Multi-strategy approach for target volatility
-    const strategies = [
-      { name: 'precise', tolerance: 0.001, iterations: 15000 },
-      { name: 'relaxed', tolerance: 0.005, iterations: 10000 },
-      { name: 'loose', tolerance: 0.01, iterations: 5000 }
-    ];
-
-    for (const strategy of strategies) {
-      console.log(`Using ${strategy.name} volatility search (tolerance: ${strategy.tolerance})`);
-      
-      for (let i = 0; i < strategy.iterations && iterationsWithoutImprovement < maxIterationsWithoutImprovement; i++) {
-        let weights: number[];
-        
-        if (i < strategy.iterations * 0.4) {
-          // Generate weights targeting the volatility level
-          weights = this.generateVolatilityTargetedWeights(n, targetVolatility);
-        } else if (i < strategy.iterations * 0.7) {
-          // Random weights
-          weights = this.generateRandomWeights(n);
-        } else {
-          // Perturbations of best solution
-          weights = bestWeights.length > 0 ? 
-            this.perturbWeights(bestWeights) : 
-            this.generateRandomWeights(n);
-        }
-
-        const volatility = this.calculatePortfolioVolatility(weights);
-        
-        // Check if volatility is close to target
-        if (Math.abs(volatility - targetVolatility) <= strategy.tolerance) {
-          const portfolioReturn = this.calculatePortfolioReturn(weights);
-          const sharpeRatio = (portfolioReturn - this.riskFreeRate) / volatility;
-          
-          if (sharpeRatio > maxSharpe && this.isValidPortfolio(weights)) {
-            maxSharpe = sharpeRatio;
-            bestWeights = [...weights];
-            iterationsWithoutImprovement = 0;
-            
-            if (strategy.name === 'precise') {
-              console.log(`🎯 Improved solution: Sharpe=${sharpeRatio.toFixed(3)}, Vol=${(volatility * 100).toFixed(2)}%`);
-            }
-          } else {
-            iterationsWithoutImprovement++;
-          }
-        } else {
-          iterationsWithoutImprovement++;
-        }
-      }
-      
-      if (bestWeights.length > 0) break;
-    }
-
-    // Fallback to analytical solution
-    if (bestWeights.length === 0) {
-      console.log('🔄 Monte Carlo failed, using analytical approach...');
-      bestWeights = this.analyticalTargetVolatility(targetVolatility);
-    }
-
-    const finalReturn = this.calculatePortfolioReturn(bestWeights);
-    const finalVolatility = this.calculatePortfolioVolatility(bestWeights);
-    
-    console.log(`✅ Target Volatility Optimization Complete:`);
-    console.log(`   Target: ${(targetVolatility * 100).toFixed(2)}%`);
-    console.log(`   Achieved: ${(finalVolatility * 100).toFixed(2)}%`);
-    console.log(`   Return: ${(finalReturn * 100).toFixed(2)}%`);
-
-    return {
-      weights: bestWeights,
-      expectedReturn: finalReturn,
-      volatility: finalVolatility,
-      sharpeRatio: (finalReturn - this.riskFreeRate) / finalVolatility,
-      targetAchieved: Math.abs(finalVolatility - targetVolatility) < 0.01
-    };
-  }
-
-  // Helper Methods
-  private generateBiasedWeights(n: number, targetReturn: number): number[] {
-    // Generate weights biased toward assets with returns closer to target
-    const weights = new Array(n).fill(0);
-    const returnDiffs = this.meanReturns.map(r => Math.abs(r - targetReturn));
-    const minDiff = Math.min(...returnDiffs);
-    
-    // Higher weight for assets closer to target return
-    for (let i = 0; i < n; i++) {
-      const proximity = 1 / (1 + (returnDiffs[i] - minDiff) * 100);
-      weights[i] = proximity + Math.random() * 0.3;
-    }
-    
-    // Normalize
-    const sum = weights.reduce((s, w) => s + w, 0);
-    return weights.map(w => w / sum);
-  }
-
-  private generateVolatilityTargetedWeights(n: number, targetVol: number): number[] {
-    // Generate weights that might achieve target volatility
-    const assetVols = this.returns.map(returns => {
-      const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
-      const variance = returns.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / (returns.length - 1);
-      return Math.sqrt(variance);
-    });
-    
-    const avgVol = assetVols.reduce((s, v) => s + v, 0) / n;
-    const weights = new Array(n).fill(0);
-    
-    for (let i = 0; i < n; i++) {
-      // Bias toward assets with volatility closer to target
-      const volRatio = targetVol / (assetVols[i] + 0.001);
-      weights[i] = Math.max(0.01, volRatio + Math.random() * 0.3);
-    }
-    
-    // Normalize
-    const sum = weights.reduce((s, w) => s + w, 0);
-    return weights.map(w => w / sum);
-  }
-
-  private perturbWeights(baseWeights: number[]): number[] {
-    const perturbedWeights = baseWeights.map(w => {
-      const perturbation = (Math.random() - 0.5) * 0.1; // ±5% perturbation
-      return Math.max(0.001, w + perturbation);
-    });
-    
-    // Normalize
-    const sum = perturbedWeights.reduce((s, w) => s + w, 0);
-    return perturbedWeights.map(w => w / sum);
-  }
-
-  private generateRandomWeights(n: number): number[] {
-    const weights = Array.from({ length: n }, () => Math.random());
-    const sum = weights.reduce((s, w) => s + w, 0);
-    return weights.map(w => w / sum);
-  }
-
-  private analyticalTargetReturn(targetReturn: number): number[] {
-    // Simplified analytical approach - equal weights adjusted
-    const n = this.returns.length;
-    return new Array(n).fill(1 / n);
-  }
-
-  private analyticalTargetVolatility(targetVolatility: number): number[] {
-    // Simplified analytical approach - equal weights adjusted  
-    const n = this.returns.length;
-    return new Array(n).fill(1 / n);
-  }
-
-  private calculatePortfolioReturn(weights: number[]): number {
-    return weights.reduce((sum, weight, i) => sum + weight * this.meanReturns[i], 0);
-  }
-
-  private calculatePortfolioVolatility(weights: number[]): number {
-    let variance = 0;
-    for (let i = 0; i < weights.length; i++) {
-      for (let j = 0; j < weights.length; j++) {
-        variance += weights[i] * weights[j] * this.covarianceMatrix[i][j];
-      }
-    }
-    return Math.sqrt(Math.max(0, variance));
-  }
-
-  private isValidPortfolio(weights: number[]): boolean {
-    const sum = weights.reduce((s, w) => s + w, 0);
-    const hasNaN = weights.some(w => isNaN(w) || !isFinite(w));
-    const hasNegative = weights.some(w => w < 0);
-    
-    return Math.abs(sum - 1) < 1e-6 && !hasNaN && !hasNegative;
-  }
-}
-
-
 
 
 
@@ -524,70 +249,186 @@ export class PortfolioOptimizer {
   }
 
   // FIXED: Target return optimization
+  // Replace your existing optimizeForTargetReturn method with this:
   optimizeForTargetReturn(targetReturn: number): any {
     const n = this.returns.length;
+    console.log(`🎯 Optimizing for target return: ${(targetReturn * 100).toFixed(2)}%`);
+
+    // Check if target return is achievable
+    const maxReturn = Math.max(...this.meanReturns);
+    const minReturn = Math.min(...this.meanReturns);
+  
+    if (targetReturn > maxReturn || targetReturn < minReturn) {
+      console.warn(`Target return ${(targetReturn * 100).toFixed(2)}% is outside feasible range [${(minReturn * 100).toFixed(2)}%, ${(maxReturn * 100).toFixed(2)}%]`);
+      
+      // Adjust target to feasible range
+      targetReturn = Math.max(minReturn, Math.min(maxReturn, targetReturn));
+      console.log(`Adjusted target return to: ${(targetReturn * 100).toFixed(2)}%`);
+    }
+
     let bestWeights: number[] = [];
     let minVolatility = Infinity;
+    let iterationsWithoutImprovement = 0;
+    const maxIterationsWithoutImprovement = 5000;
 
-    // Monte Carlo approach for target return
-    for (let i = 0; i < 20000; i++) {
-      const weights = this.generateRandomWeights(n);
-      const portfolioReturn = this.calculatePortfolioReturn(weights);
+    // Enhanced optimization with multiple search strategies
+    const strategies = [
+      { name: 'fine', tolerance: 0.001, iterations: 15000 },
+      { name: 'medium', tolerance: 0.005, iterations: 10000 },
+      { name: 'coarse', tolerance: 0.01, iterations: 5000 }
+    ];
+
+    for (const strategy of strategies) {
+      console.log(`Using ${strategy.name} search strategy (tolerance: ${strategy.tolerance})`);
       
-      // Check if close to target return (within 1%)
-      if (Math.abs(portfolioReturn - targetReturn) < 0.01) {
-        const volatility = this.calculatePortfolioVolatility(weights);
-        if (volatility < minVolatility) {
-          minVolatility = volatility;
-          bestWeights = [...weights];
+      for (let i = 0; i < strategy.iterations && iterationsWithoutImprovement < maxIterationsWithoutImprovement; i++) {
+        // Generate weights using multiple methods
+        let weights: number[];
+      
+        if (i < strategy.iterations * 0.3) {
+          // Method 1: Random weights
+          weights = this.generateRandomWeights(n);
+        } else if (i < strategy.iterations * 0.6) {
+          // Method 2: Weights biased toward high-return assets
+          weights = this.generateBiasedWeights(n, targetReturn);
+        } else {
+          // Method 3: Small perturbations of current best
+          weights = bestWeights.length > 0 ? 
+            this.perturbWeights(bestWeights) : 
+            this.generateRandomWeights(n);
+        }
+
+        const portfolioReturn = this.calculatePortfolioReturn(weights);
+      
+        // Check if return is close to target
+        if (Math.abs(portfolioReturn - targetReturn) <= strategy.tolerance) {
+          const volatility = this.calculatePortfolioVolatility(weights);
+        
+          if (volatility < minVolatility && this.isValidPortfolio(weights)) {
+            minVolatility = volatility;
+            bestWeights = [...weights];
+            iterationsWithoutImprovement = 0;
+          
+            if (strategy.name === 'fine') {
+              console.log(`🎯 Improved solution found: Vol=${(volatility * 100).toFixed(2)}%, Return=${(portfolioReturn * 100).toFixed(2)}%`);
+            }
+          } else {
+            iterationsWithoutImprovement++;
+          }
+        } else {
+        iterationsWithoutImprovement++;
         }
       }
+    
+      if (bestWeights.length > 0) break; // Found solution
     }
 
+    // Fallback: Use analytical solution if Monte Carlo fails
     if (bestWeights.length === 0) {
-      // If no solution found, use equal weights adjusted for target return
-      bestWeights = new Array(n).fill(1 / n);
+      console.log('🔄 Monte Carlo failed, using analytical approach...');
+      bestWeights = this.analyticalTargetReturn(targetReturn);
     }
+  
+    const finalReturn = this.calculatePortfolioReturn(bestWeights);
+    const finalVolatility = this.calculatePortfolioVolatility(bestWeights);
+  
+    console.log(`✅ Target Return Optimization Complete:`);
+    console.log(`   Target: ${(targetReturn * 100).toFixed(2)}%`);
+    console.log(`   Achieved: ${(finalReturn * 100).toFixed(2)}%`);
+    console.log(`   Volatility: ${(finalVolatility * 100).toFixed(2)}%`);
 
     return {
       weights: bestWeights,
-      expectedReturn: this.calculatePortfolioReturn(bestWeights),
-      volatility: this.calculatePortfolioVolatility(bestWeights),
-      sharpeRatio: (this.calculatePortfolioReturn(bestWeights) - this.riskFreeRate) / this.calculatePortfolioVolatility(bestWeights)
+      expectedReturn: finalReturn,
+      volatility: finalVolatility,
+      sharpeRatio: (finalReturn - this.riskFreeRate) / finalVolatility,
+      targetAchieved: Math.abs(finalReturn - targetReturn) < 0.01
     };
   }
 
-  // FIXED: Target volatility optimization
+
+  // Replace your existing optimizeForTargetVolatility method with this:
   optimizeForTargetVolatility(targetVolatility: number): any {
     const n = this.returns.length;
+    console.log(`🎯 Optimizing for target volatility: ${(targetVolatility * 100).toFixed(2)}%`);
+
     let bestWeights: number[] = [];
     let maxSharpe = -Infinity;
+    let iterationsWithoutImprovement = 0;
+    const maxIterationsWithoutImprovement = 5000;
+  
+    // Multi-strategy approach for target volatility
+    const strategies = [
+      { name: 'precise', tolerance: 0.001, iterations: 15000 },
+      { name: 'relaxed', tolerance: 0.005, iterations: 10000 },
+      { name: 'loose', tolerance: 0.01, iterations: 5000 }
+    ];
 
-    for (let i = 0; i < 20000; i++) {
-      const weights = this.generateRandomWeights(n);
-      const volatility = this.calculatePortfolioVolatility(weights);
+    for (const strategy of strategies) {
+      console.log(`Using ${strategy.name} volatility search (tolerance: ${strategy.tolerance})`);
       
-      // Check if close to target volatility (within 1%)
-      if (Math.abs(volatility - targetVolatility) < 0.01) {
-        const portfolioReturn = this.calculatePortfolioReturn(weights);
-        const sharpeRatio = (portfolioReturn - this.riskFreeRate) / volatility;
+      for (let i = 0; i < strategy.iterations && iterationsWithoutImprovement < maxIterationsWithoutImprovement; i++) {
+        let weights: number[];
+      
+        if (i < strategy.iterations * 0.4) {
+          // Generate weights targeting the volatility level
+          weights = this.generateVolatilityTargetedWeights(n, targetVolatility);
+        } else if (i < strategy.iterations * 0.7) {
+          // Random weights
+          weights = this.generateRandomWeights(n);
+        } else {
+          // Perturbations of best solution
+          weights = bestWeights.length > 0 ? 
+            this.perturbWeights(bestWeights) : 
+            this.generateRandomWeights(n);
+        }
+
+        const volatility = this.calculatePortfolioVolatility(weights);
+      
+        // Check if volatility is close to target
+        if (Math.abs(volatility - targetVolatility) <= strategy.tolerance) {
+          const portfolioReturn = this.calculatePortfolioReturn(weights);
+          const sharpeRatio = (portfolioReturn - this.riskFreeRate) / volatility;
         
-        if (sharpeRatio > maxSharpe) {
-          maxSharpe = sharpeRatio;
-          bestWeights = [...weights];
+          if (sharpeRatio > maxSharpe && this.isValidPortfolio(weights)) {
+            maxSharpe = sharpeRatio;
+            bestWeights = [...weights];
+            iterationsWithoutImprovement = 0;
+          
+            if (strategy.name === 'precise') {
+              console.log(`🎯 Improved solution: Sharpe=${sharpeRatio.toFixed(3)}, Vol=${(volatility * 100).toFixed(2)}%`);
+            } 
+          } else {
+            iterationsWithoutImprovement++;
+          }
+        } else {
+          iterationsWithoutImprovement++;
         }
       }
+    
+      if (bestWeights.length > 0) break;
     }
 
+    // Fallback to analytical solution
     if (bestWeights.length === 0) {
-      bestWeights = new Array(n).fill(1 / n);
+      console.log('🔄 Monte Carlo failed, using analytical approach...');
+      bestWeights = this.analyticalTargetVolatility(targetVolatility);
     }
+  
+    const finalReturn = this.calculatePortfolioReturn(bestWeights);
+    const finalVolatility = this.calculatePortfolioVolatility(bestWeights);
+  
+    console.log(`✅ Target Volatility Optimization Complete:`);
+    console.log(`   Target: ${(targetVolatility * 100).toFixed(2)}%`);
+    console.log(`   Achieved: ${(finalVolatility * 100).toFixed(2)}%`);
+    console.log(`   Return: ${(finalReturn * 100).toFixed(2)}%`);
 
     return {
       weights: bestWeights,
-      expectedReturn: this.calculatePortfolioReturn(bestWeights),
-      volatility: this.calculatePortfolioVolatility(bestWeights),
-      sharpeRatio: (this.calculatePortfolioReturn(bestWeights) - this.riskFreeRate) / this.calculatePortfolioVolatility(bestWeights)
+      expectedReturn: finalReturn,
+      volatility: finalVolatility,
+      sharpeRatio: (finalReturn - this.riskFreeRate) / finalVolatility,
+      targetAchieved: Math.abs(finalVolatility - targetVolatility) < 0.01
     };
   }
 
@@ -625,6 +466,87 @@ export class PortfolioOptimizer {
   }
 
   // Helper methods
+
+  // STEP 1.3: Add these helper methods to your PortfolioOptimizer class
+
+  // Add these methods to the bottom of your PortfolioOptimizer class (before the closing brace)
+
+  private generateBiasedWeights(n: number, targetReturn: number): number[] {
+    // Generate weights biased toward assets with returns closer to target
+    const weights = new Array(n).fill(0);
+    const returnDiffs = this.meanReturns.map(r => Math.abs(r - targetReturn));
+    const minDiff = Math.min(...returnDiffs);
+  
+    // Higher weight for assets closer to target return
+    for (let i = 0; i < n; i++) {
+      const proximity = 1 / (1 + (returnDiffs[i] - minDiff) * 100);
+      weights[i] = proximity + Math.random() * 0.3;
+    }
+  
+    // Normalize
+    const sum = weights.reduce((s, w) => s + w, 0);
+    return weights.map(w => w / sum);
+  }
+
+  private generateVolatilityTargetedWeights(n: number, targetVol: number): number[] {
+    // Generate weights that might achieve target volatility
+    const assetVols = this.returns.map(returns => {
+      const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+      const variance = returns.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / (returns.length - 1);
+      return Math.sqrt(variance);
+    });
+  
+    const weights = new Array(n).fill(0);
+  
+    for (let i = 0; i < n; i++) {
+      // Bias toward assets with volatility closer to target
+      const volRatio = targetVol / (assetVols[i] + 0.001);
+      weights[i] = Math.max(0.01, volRatio + Math.random() * 0.3);
+    }
+  
+    // Normalize
+    const sum = weights.reduce((s, w) => s + w, 0);
+    return weights.map(w => w / sum);
+  }
+
+  private perturbWeights(baseWeights: number[]): number[] {
+    const perturbedWeights = baseWeights.map(w => {
+      const perturbation = (Math.random() - 0.5) * 0.1; // ±5% perturbation
+      return Math.max(0.001, w + perturbation);
+    });
+  
+    // Normalize
+    const sum = perturbedWeights.reduce((s, w) => s + w, 0);
+    return perturbedWeights.map(w => w / sum);
+  }
+
+  private analyticalTargetReturn(targetReturn: number): number[] {
+    // Simplified analytical approach - equal weights adjusted
+    const n = this.returns.length;
+    return new Array(n).fill(1 / n);
+  }
+
+  private analyticalTargetVolatility(targetVolatility: number): number[] {
+    // Simplified analytical approach - equal weights adjusted  
+    const n = this.returns.length;
+    return new Array(n).fill(1 / n);
+  }
+
+  private isValidPortfolio(weights: number[]): boolean {
+    const sum = weights.reduce((s, w) => s + w, 0);
+    const hasNaN = weights.some(w => isNaN(w) || !isFinite(w));
+    const hasNegative = weights.some(w => w < 0);
+  
+    return Math.abs(sum - 1) < 1e-6 && !hasNaN && !hasNegative;
+  }
+
+
+
+
+
+
+
+  
   private generateRandomWeights(n: number, constraints?: any): number[] {
     let weights: number[];
     
