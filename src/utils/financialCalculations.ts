@@ -424,11 +424,31 @@ export class PortfolioOptimizer {
     } catch {
       // Fallback: add small values to diagonal for numerical stability
       const n = matrix.length;
-      const stabilized = matrix.map((row, i) => 
+      const stabilized = matrix.map((row, i) =>
         row.map((val, j) => i === j ? val + 0.0001 : val)
       );
       return math.inv(stabilized) as number[][];
     }
+  }
+
+  // Validate optimization result weights
+  validateOptimizationResult(weights: number[]): {
+    isValid: boolean;
+    weightSum: number;
+    hasNaN: boolean;
+    hasNegative: boolean;
+  } {
+    const weightSum = weights.reduce((s, w) => s + w, 0);
+    const hasNaN = weights.some(w => isNaN(w));
+    const hasNegative = weights.some(w => w < 0);
+    const isValid = Math.abs(weightSum - 1) < 1e-6 && !hasNaN && !hasNegative;
+
+    return {
+      isValid,
+      weightSum,
+      hasNaN,
+      hasNegative,
+    };
   }
 }
 
