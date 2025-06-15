@@ -1,5 +1,5 @@
-// app/var.tsx - BEAUTIFUL VaR ANALYZER
-// Enhanced with stunning animations, interactive elements, and modern design
+// app/var.tsx - BEAUTIFUL VaR ANALYZER REFAIT COMPLET
+// Version complètement refaite, propre et sans erreurs
 
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
@@ -26,6 +26,7 @@ import { VaRCalculator } from '../src/utils/financialCalculations';
 
 const { width } = Dimensions.get('window');
 
+// ===== INTERFACES & TYPES =====
 interface IndividualVaRResult {
   ticker: string;
   var: number;
@@ -62,12 +63,14 @@ interface VaRResults {
     expectedRate: number;
     kupiecTest: number;
     totalObservations: number;
+    passedTest: boolean;
   };
   stressResults?: Array<{
     scenario: string;
     loss: number;
     probability: number;
-    description?: string;
+    description: string;
+    icon: string;
   }>;
   metadata: {
     dataSource: string;
@@ -76,6 +79,17 @@ interface VaRResults {
   };
 }
 
+interface VaRMethod {
+  key: string;
+  label: string;
+  icon: string;
+  description: string;
+  isIndividual: boolean;
+  color: string;
+  gradient: string[];
+}
+
+// ===== COMPONENT PRINCIPAL =====
 export default function BeautifulVaRAnalyzer() {
   // Animation references
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -92,23 +106,22 @@ export default function BeautifulVaRAnalyzer() {
   
   // VaR method selection
   const [varMethod, setVarMethod] = useState('parametric_individual');
-  const [timeHorizon, setTimeHorizon] = useState(1);
   const [numSimulations, setNumSimulations] = useState(10000);
   
   // Advanced options
   const [includeStressTesting, setIncludeStressTesting] = useState(true);
   const [runBacktest, setRunBacktest] = useState(true);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
   
   // State management
   const [loading, setLoading] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
   const [results, setResults] = useState<VaRResults | null>(null);
   const [activeTab, setActiveTab] = useState('summary');
   const [dataHealth, setDataHealth] = useState<any>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>('basic');
 
-  // Beautiful VaR methods with animations
-  const varMethods = [
+  // ===== CONFIGURATION DATA =====
+  const varMethods: VaRMethod[] = [
     { 
       key: 'parametric_individual', 
       label: 'Parametric (Per Asset)', 
@@ -157,13 +170,14 @@ export default function BeautifulVaRAnalyzer() {
   ];
 
   const stressScenarios = [
-    { name: 'Market Crash', marketShock: -0.20, description: '20% market decline', icon: '💥', color: '#e74c3c' },
-    { name: 'Interest Rate Shock', bondShock: -0.10, description: '10% bond decline', icon: '📈', color: '#f39c12' },
-    { name: 'Currency Crisis', currencyShock: -0.15, description: '15% USD strengthening', icon: '💱', color: '#9b59b6' },
-    { name: 'Black Swan Event', extremeShock: -0.30, description: '30% extreme decline', icon: '🦢', color: '#2c3e50' },
-    { name: 'Correlation Breakdown', correlationShock: 0.9, description: 'Correlations spike to 0.9', icon: '🔗', color: '#34495e' }
+    { name: 'Market Crash', shock: -0.20, description: '20% market decline', icon: '💥' },
+    { name: 'Interest Rate Shock', shock: -0.10, description: '10% rate shock', icon: '📈' },
+    { name: 'Currency Crisis', shock: -0.15, description: '15% currency shock', icon: '💱' },
+    { name: 'Black Swan Event', shock: -0.30, description: '30% extreme decline', icon: '🦢' },
+    { name: 'Correlation Breakdown', shock: -0.25, description: 'Correlation breakdown', icon: '🔗' }
   ];
 
+  // ===== LIFECYCLE & ANIMATIONS =====
   useEffect(() => {
     // Entrance animations
     Animated.parallel([
@@ -180,7 +194,7 @@ export default function BeautifulVaRAnalyzer() {
       }),
     ]).start();
 
-    // Continuous pulse animation
+    // Continuous animations
     const pulseLoop = Animated.sequence([
       Animated.timing(pulseAnim, {
         toValue: 1.02,
@@ -195,7 +209,6 @@ export default function BeautifulVaRAnalyzer() {
     ]);
     Animated.loop(pulseLoop).start();
 
-    // Rotation animation for loading
     const rotateLoop = Animated.timing(rotateAnim, {
       toValue: 1,
       duration: 2000,
@@ -203,17 +216,19 @@ export default function BeautifulVaRAnalyzer() {
     });
     Animated.loop(rotateLoop).start();
 
+    // Initialize system
     checkSystemHealth();
     
+    // Cleanup function
     return () => {
       console.log('🧹 Cleaning up VaR analysis screen...');
       setResults(null);
       setAnalysisProgress(0);
-      animateProgress(0);
       setLoading(false);
     };
   }, []);
 
+  // ===== UTILITY FUNCTIONS =====
   const checkSystemHealth = async () => {
     try {
       const health = await realTimeDataFetcher.healthCheck();
@@ -223,14 +238,27 @@ export default function BeautifulVaRAnalyzer() {
     }
   };
 
-  // 2. FIX: Enhanced weight parsing with validation
-  const parseWeights = (weightsString, tickerCount) => {
+  const animateProgress = (toValue: number) => {
+    const clampedValue = Math.max(0, Math.min(1, toValue));
+    Animated.timing(progressAnim, {
+      toValue: clampedValue,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const updateProgress = (value: number) => {
+    const clampedValue = Math.max(0, Math.min(100, value));
+    setAnalysisProgress(clampedValue);
+    animateProgress(clampedValue / 100);
+  };
+
+  const parseWeights = (weightsString: string, tickerCount: number): number[] => {
     try {
       if (!weightsString || weightsString.trim() === '') {
-        // Equal weights if empty
         return Array(tickerCount).fill(1 / tickerCount);
       }
-    
+      
       const weightArray = weightsString
         .split(',')
         .map(w => {
@@ -240,19 +268,18 @@ export default function BeautifulVaRAnalyzer() {
           }
           return parsed;
         });
-    
+      
       if (weightArray.length !== tickerCount) {
         throw new Error(`Number of weights (${weightArray.length}) must match number of tickers (${tickerCount})`);
       }
-    
+      
       const sum = weightArray.reduce((acc, w) => acc + w, 0);
       if (sum === 0) {
         throw new Error('Weight sum cannot be zero');
       }
-    
-      // Normalize to percentages (0-1)
+      
       return weightArray.map(w => w / sum);
-    
+      
     } catch (error) {
       console.warn('Weight parsing error:', error.message);
       Alert.alert(
@@ -264,216 +291,17 @@ export default function BeautifulVaRAnalyzer() {
     }
   };
 
-  const animateProgress = (toValue) => {
-    // Validate input
-    const clampedValue = Math.max(0, Math.min(1, toValue));
-  
-    Animated.timing(progressAnim, {
-      toValue: clampedValue,
-      duration: 300,
-      useNativeDriver: false, // Required for width animation
-    }).start((finished) => {
-      if (!finished) {
-        console.warn('Progress animation was interrupted');
-      }
-    });
+  const toggleSection = (section: string) => {
+    setExpandedSection(expandedSection === section ? null : section);
   };
 
-  const runAdvancedVaRAnalysis = async () => {
-    setLoading(true);
-    setAnalysisProgress(0);
-    setResults(null); // Clear previous results
-    animateProgress(0);
-  
-    const startTime = Date.now();
-  
-    try {
-      // Parse and validate inputs
-      const tickerList = tickers.split(',')
-        .map(t => t.trim().toUpperCase())
-        .filter(t => t.length > 0 && /^[A-Z]{1,5}$/.test(t));
-      
-      if (tickerList.length < 1) {
-        Alert.alert('❌ Error', 'Please enter at least 1 valid ticker');
-        return;
-      }
-
-      if (tickerList.length > 15) {
-        Alert.alert('❌ Error', 'Maximum 15 tickers allowed for mobile VaR analysis');
-        return;
-      }
-
-      const portfolioWeights = parseWeights(weights, tickerList.length);
-      const selectedMethod = varMethods.find(m => m.key === varMethod);
-
-      // ADD: Progress validation
-      const updateProgress = (value) => {
-        const clampedValue = Math.max(0, Math.min(100, value));
-        setAnalysisProgress(clampedValue);
-        animateProgress(clampedValue / 100);
-      };
-
-      // Step 1: Validate inputs
-      updateProgress(5);
-      const tickerList = tickers.split(',')
-        .map(t => t.trim().toUpperCase())
-        .filter(t => t.length > 0 && /^[A-Z^]{1,6}$/.test(t)); // Allow up to 6 chars for indices
-    
-      if (tickerList.length < 1) {
-        throw new Error('Please enter at least 1 valid ticker symbol');
-      }
-
-      if (tickerList.length > 15) {
-        throw new Error('Maximum 15 tickers allowed for mobile VaR analysis');
-      }
-
-      // ADD: Weight validation with better error messages
-      const portfolioWeights = parseWeights(weights, tickerList.length);
-      const weightSum = portfolioWeights.reduce((sum, w) => sum + w, 0);
-    
-      if (Math.abs(weightSum - 1.0) > 0.1) {
-        Alert.alert(
-          '⚠️ Weights Adjusted', 
-          `Weights were normalized from ${(weightSum * 100).toFixed(1)}% to 100%`,
-          [{ text: 'Continue', style: 'default' }]
-        );
-      }
-
-      updateProgress(10);
-      console.log(`🚀 Starting ${selectedMethod?.label} analysis for:`, tickerList);
-
-      // Step 2: Fetch market data with better error handling
-      updateProgress(20);
-      let stockData;
-      try {
-        stockData = await realTimeDataFetcher.fetchMultipleStocks(tickerList, '2y', true);
-      } catch (dataError) {
-        console.warn('Real-time data failed, trying fallback...', dataError.message);
-      
-        // Fallback: try with shorter period
-        try {
-          stockData = await realTimeDataFetcher.fetchMultipleStocks(tickerList, '1y', true);
-          Alert.alert(
-            'ℹ️ Data Limitation', 
-            'Using 1-year data instead of 2-year due to data availability.',
-            [{ text: 'OK', style: 'default' }]
-          );
-        } catch (fallbackError) {
-          throw new Error(`Failed to fetch market data: ${fallbackError.message}`);
-        }
-      }
-    
-      updateProgress(40);
-
-      // ADD: Data quality validation
-      if (!stockData.metadata || !stockData.returns) {
-        throw new Error('Invalid data structure received from data source');
-      }
-
-      console.log(`✅ Data fetched: ${stockData.symbols.join(', ')}`);
-      console.log(`📊 Data quality: ${stockData.metadata.successRate} success rate`);
-
-      // Step 3: Prepare returns matrix with validation
-      updateProgress(50);
-      const returnsMatrix = stockData.symbols.map(symbol => {
-        const returns = stockData.returns[symbol] || [];
-        if (returns.length < 50) {
-          console.warn(`Warning: ${symbol} has only ${returns.length} observations`);
-        }
-        return returns;
-      });
-    
-      const minObservations = Math.min(...returnsMatrix.map(r => r.length));
-      if (minObservations < 30) {
-        Alert.alert(
-          '⚠️ Limited Data Warning', 
-          `Only ${minObservations} observations available. VaR estimates may be less reliable with fewer than 100 observations.`,
-          [
-            { text: 'Cancel', style: 'cancel', onPress: () => { throw new Error('Analysis cancelled by user'); } },
-            { text: 'Continue', style: 'default' }
-          ]
-        );
-      }
-
-      updateProgress(60);
-      console.log(`📊 Analyzing ${minObservations} observations per asset`);
-
-      // Step 4: Calculate VaR with method validation
-      updateProgress(70);
-      let varResults;
-    
-      const selectedMethod = varMethods.find(m => m.key === varMethod);
-      if (!selectedMethod) {
-        throw new Error('Invalid VaR method selected');
-      }
-    
-      console.log(`🎯 Running ${selectedMethod.label} with ${numSimulations.toLocaleString()} simulations...`);
-    
-      try {
-        if (selectedMethod.isIndividual) {
-          varResults = await calculateIndividualVaR(returnsMatrix, stockData.symbols, portfolioWeights, selectedMethod.key);
-        } else {
-          varResults = await calculatePortfolioVaR(returnsMatrix, stockData.symbols, portfolioWeights, selectedMethod.key);
-        }
-      } catch (calcError) {
-        throw new Error(`VaR calculation failed: ${calcError.message}`);
-      }
-
-      updateProgress(85);
-
-      // Step 5: Validate results
-      if (!varResults || (!varResults.individualResults && !varResults.portfolioResult)) {
-        throw new Error('VaR calculation produced no valid results');
-      }
-
-      // ... rest of the analysis code ...
-
-      updateProgress(100);
-      setResults(varResults);
-      setActiveTab('summary');
-
-      // Success feedback with more details
-      const totalVar = varResults.individualResults 
-        ? varResults.individualResults.reduce((sum, r) => sum + r.var, 0)
-        : varResults.portfolioResult?.var || 0;
-
-      const successMessage = `✅ VaR Analysis Complete!\n• Method: ${selectedMethod?.label}\n• ${(confidenceLevel * 100).toFixed(0)}% VaR: $${totalVar.toLocaleString()}\n• Calculation time: ${calculationTime}ms\n• Data points: ${minObservations} per asset`;
-    
-      Alert.alert('🎉 Analysis Complete!', successMessage);
-
-    } catch (error) {
-      console.error('❌ VaR analysis error:', error);
-    
-      // Enhanced error messaging
-      let errorTitle = '❌ Analysis Failed';
-      let errorMessage = 'VaR analysis encountered an error.';
-    
-      if (error.message.includes('fetch') || error.message.includes('network')) {
-        errorTitle = '🌐 Data Connection Issue';
-        errorMessage = 'Unable to fetch market data. Please check your internet connection and try again.';
-      } else if (error.message.includes('Insufficient')) {
-        errorTitle = '📊 Data Quality Issue';
-        errorMessage = error.message + '\n\nTry using fewer assets or a different time period.';
-      } else if (error.message.includes('calculation')) {
-        errorTitle = '🧮 Calculation Error';
-        errorMessage = 'The VaR calculation failed due to data issues. Please verify your inputs and try again.';
-      } else if (error.message.includes('cancelled')) {
-        errorTitle = '⏹️ Analysis Cancelled';
-        errorMessage = 'Analysis was cancelled by user.';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-    
-      Alert.alert(errorTitle, errorMessage);
-    } finally {
-      // FIX: Proper cleanup
-      setLoading(false);
-      setAnalysisProgress(0);
-      animateProgress(0);
-    }
-  };
-
-  const calculateIndividualVaR = async (returnsMatrix: number[][], tickers: string[], weights: number[], method: string): Promise<VaRResults> => {
+  // ===== VaR CALCULATION FUNCTIONS =====
+  const calculateIndividualVaR = async (
+    returnsMatrix: number[][], 
+    tickers: string[], 
+    weights: number[], 
+    method: string
+  ): Promise<VaRResults> => {
     const individualResults: IndividualVaRResult[] = [];
     
     for (let i = 0; i < returnsMatrix.length; i++) {
@@ -485,15 +313,13 @@ export default function BeautifulVaRAnalyzer() {
         let result: IndividualVaRResult;
         
         if (method === 'parametric_individual') {
-          const varResult = VaRCalculator.calculateIndividualParametricVaR(
+          result = VaRCalculator.calculateIndividualParametricVaR(
             assetReturns, ticker, confidenceLevel, assetPositionSize
           );
-          result = varResult;
         } else if (method === 'historical_individual') {
-          const varResult = VaRCalculator.calculateIndividualHistoricalVaR(
+          result = VaRCalculator.calculateIndividualHistoricalVaR(
             assetReturns, ticker, confidenceLevel, assetPositionSize
           );
-          result = varResult;
         } else {
           throw new Error(`Unsupported individual method: ${method}`);
         }
@@ -518,14 +344,19 @@ export default function BeautifulVaRAnalyzer() {
       tickers: tickers,
       weights: weights,
       metadata: {
-        dataSource: '',
-        fetchTime: '',
+        dataSource: 'real-time',
+        fetchTime: new Date().toISOString(),
         calculationTime: 0
       }
     };
   };
 
-  const calculatePortfolioVaR = async (returnsMatrix: number[][], tickers: string[], weights: number[], method: string): Promise<VaRResults> => {
+  const calculatePortfolioVaR = async (
+    returnsMatrix: number[][], 
+    tickers: string[], 
+    weights: number[], 
+    method: string
+  ): Promise<VaRResults> => {
     let portfolioResult: PortfolioVaRResult;
     
     try {
@@ -560,20 +391,24 @@ export default function BeautifulVaRAnalyzer() {
       tickers: tickers,
       weights: weights,
       metadata: {
-        dataSource: '',
-        fetchTime: '',
+        dataSource: 'real-time',
+        fetchTime: new Date().toISOString(),
         calculationTime: 0
       }
     };
   };
 
-  const runStressTests = async (returnsMatrix: number[][], weights: number[], positionSize: number) => {
+  const runStressTests = async (
+    returnsMatrix: number[][], 
+    weights: number[], 
+    positionSize: number
+  ) => {
     const stressResults = [];
     
     for (const scenario of stressScenarios) {
       try {
         const stressedReturns = returnsMatrix.map(returns => 
-          returns.map(r => r + (scenario.marketShock || scenario.bondShock || scenario.extremeShock || 0))
+          returns.map(r => r + scenario.shock)
         );
         
         const stressVaR = VaRCalculator.calculatePortfolioVaR(
@@ -584,7 +419,8 @@ export default function BeautifulVaRAnalyzer() {
           scenario: scenario.name,
           loss: stressVaR.var,
           probability: 0.01,
-          description: scenario.description
+          description: scenario.description,
+          icon: scenario.icon
         });
         
       } catch (error) {
@@ -595,7 +431,13 @@ export default function BeautifulVaRAnalyzer() {
     return stressResults;
   };
 
-  const performBacktest = (returnsMatrix: number[][], weights: number[], varResults: VaRResults, confidenceLevel: number, positionSize: number) => {
+  const performBacktest = (
+    returnsMatrix: number[][], 
+    weights: number[], 
+    varResults: VaRResults, 
+    confidenceLevel: number, 
+    positionSize: number
+  ) => {
     try {
       let varThreshold = 0;
       if (varResults.individualResults) {
@@ -619,13 +461,15 @@ export default function BeautifulVaRAnalyzer() {
       const expectedRate = (1 - confidenceLevel) * 100;
       
       const kupiecTest = VaRCalculator.calculateKupiecTest(exceedances, portfolioReturns.length, 1 - confidenceLevel);
+      const passedTest = Math.abs(exceedanceRate - expectedRate) < 2; // 2% tolerance
       
       return {
         exceedances: exceedances,
         exceedanceRate: exceedanceRate,
         expectedRate: expectedRate,
         kupiecTest: kupiecTest,
-        totalObservations: portfolioReturns.length
+        totalObservations: portfolioReturns.length,
+        passedTest: passedTest
       };
       
     } catch (error) {
@@ -635,16 +479,253 @@ export default function BeautifulVaRAnalyzer() {
         exceedanceRate: 0,
         expectedRate: (1 - confidenceLevel) * 100,
         kupiecTest: 0,
-        totalObservations: 0
+        totalObservations: 0,
+        passedTest: false
       };
     }
   };
 
-  const toggleSection = (section: string) => {
-    setExpandedSection(expandedSection === section ? null : section);
+  // ===== MAIN VaR ANALYSIS FUNCTION =====
+  const runAdvancedVaRAnalysis = async () => {
+    setLoading(true);
+    setAnalysisProgress(0);
+    setResults(null);
+    animateProgress(0);
+    
+    const startTime = Date.now();
+    
+    try {
+      // Step 1: Parse and validate inputs
+      updateProgress(5);
+      const tickerList = tickers.split(',')
+        .map(t => t.trim().toUpperCase())
+        .filter(t => t.length > 0 && /^[A-Z^]{1,6}$/.test(t));
+      
+      if (tickerList.length < 1) {
+        throw new Error('Please enter at least 1 valid ticker symbol');
+      }
+
+      if (tickerList.length > 15) {
+        throw new Error('Maximum 15 tickers allowed for mobile VaR analysis');
+      }
+
+      const selectedMethod = varMethods.find(m => m.key === varMethod);
+      if (!selectedMethod) {
+        throw new Error('Invalid VaR method selected');
+      }
+
+      console.log(`🚀 Starting ${selectedMethod.label} analysis for:`, tickerList);
+
+      // Step 2: Parse and validate weights
+      updateProgress(10);
+      const portfolioWeights = parseWeights(weights, tickerList.length);
+      const weightSum = portfolioWeights.reduce((sum, w) => sum + w, 0);
+      
+      if (Math.abs(weightSum - 1.0) > 0.1) {
+        Alert.alert(
+          '⚠️ Weights Adjusted', 
+          `Weights were normalized from ${(weightSum * 100).toFixed(1)}% to 100%`,
+          [{ text: 'Continue', style: 'default' }]
+        );
+      }
+
+      // Step 3: Fetch market data with fallback
+      updateProgress(20);
+      let stockData;
+      
+      try {
+        stockData = await realTimeDataFetcher.fetchMultipleStocks(tickerList, '2y', true);
+      } catch (dataError) {
+        console.warn('2-year data failed, trying 1-year fallback...', dataError.message);
+        
+        try {
+          stockData = await realTimeDataFetcher.fetchMultipleStocks(tickerList, '1y', true);
+          Alert.alert(
+            'ℹ️ Data Limitation', 
+            'Using 1-year data instead of 2-year due to data availability.',
+            [{ text: 'OK', style: 'default' }]
+          );
+        } catch (fallbackError) {
+          throw new Error(`Failed to fetch market data: ${fallbackError.message}`);
+        }
+      }
+      
+      updateProgress(40);
+
+      // Step 4: Validate data quality
+      if (!stockData?.metadata || !stockData?.returns) {
+        throw new Error('Invalid data structure received from data source');
+      }
+
+      console.log(`✅ Data fetched: ${stockData.symbols.join(', ')}`);
+      console.log(`📊 Data quality: ${stockData.metadata.successRate} success rate`);
+
+      // Step 5: Prepare returns matrix
+      updateProgress(50);
+      const returnsMatrix = stockData.symbols.map(symbol => {
+        const returns = stockData.returns[symbol] || [];
+        if (returns.length < 50) {
+          console.warn(`Warning: ${symbol} has only ${returns.length} observations`);
+        }
+        return returns;
+      });
+      
+      const minObservations = Math.min(...returnsMatrix.map(r => r.length));
+      if (minObservations < 30) {
+        const shouldContinue = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            '⚠️ Limited Data Warning', 
+            `Only ${minObservations} observations available. VaR estimates may be less reliable with fewer than 100 observations.\n\nDo you want to continue?`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Continue', style: 'default', onPress: () => resolve(true) }
+            ]
+          );
+        });
+        
+        if (!shouldContinue) {
+          throw new Error('Analysis cancelled by user');
+        }
+      }
+
+      updateProgress(60);
+      console.log(`📊 Analyzing ${minObservations} observations per asset`);
+
+      // Step 6: Calculate VaR
+      updateProgress(70);
+      console.log(`🎯 Running ${selectedMethod.label} with ${numSimulations.toLocaleString()} simulations...`);
+      
+      let varResults: VaRResults;
+      
+      try {
+        if (selectedMethod.isIndividual) {
+          varResults = await calculateIndividualVaR(
+            returnsMatrix, 
+            stockData.symbols, 
+            portfolioWeights, 
+            selectedMethod.key
+          );
+        } else {
+          varResults = await calculatePortfolioVaR(
+            returnsMatrix, 
+            stockData.symbols, 
+            portfolioWeights, 
+            selectedMethod.key
+          );
+        }
+      } catch (calcError) {
+        throw new Error(`VaR calculation failed: ${calcError.message}`);
+      }
+
+      updateProgress(85);
+
+      // Step 7: Validate results
+      if (!varResults || (!varResults.individualResults && !varResults.portfolioResult)) {
+        throw new Error('VaR calculation produced no valid results');
+      }
+
+      // Step 8: Additional analysis
+      const calculationTime = Date.now() - startTime;
+      varResults.metadata.calculationTime = calculationTime;
+      varResults.metadata.dataSource = stockData.metadata.dataSource;
+      varResults.metadata.fetchTime = stockData.metadata.fetchTime;
+
+      if (includeStressTesting) {
+        console.log('💥 Running stress tests...');
+        try {
+          varResults.stressResults = await runStressTests(returnsMatrix, portfolioWeights, positionSize);
+        } catch (stressError) {
+          console.warn('Stress testing failed:', stressError.message);
+        }
+      }
+
+      if (runBacktest && minObservations > 100) {
+        console.log('📊 Running VaR backtesting...');
+        try {
+          varResults.backtestResults = performBacktest(
+            returnsMatrix, 
+            portfolioWeights, 
+            varResults, 
+            confidenceLevel, 
+            positionSize
+          );
+        } catch (backtestError) {
+          console.warn('Backtesting failed:', backtestError.message);
+        }
+      }
+
+      // Step 9: Complete analysis
+      updateProgress(100);
+      setResults(varResults);
+      setActiveTab('summary');
+
+      const totalVar = varResults.individualResults 
+        ? varResults.individualResults.reduce((sum, r) => sum + r.var, 0)
+        : varResults.portfolioResult?.var || 0;
+
+      const successMessage = `✅ VaR Analysis Complete!\n• Method: ${selectedMethod.label}\n• ${(confidenceLevel * 100).toFixed(0)}% VaR: $${totalVar.toLocaleString()}\n• Calculation time: ${calculationTime}ms\n• Data points: ${minObservations} per asset\n• Assets analyzed: ${stockData.symbols.length}`;
+      
+      Alert.alert('🎉 Analysis Complete!', successMessage);
+
+    } catch (error) {
+      console.error('❌ VaR analysis error:', error);
+      
+      let errorTitle = '❌ Analysis Failed';
+      let errorMessage = 'VaR analysis encountered an error.';
+      
+      if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('data')) {
+        errorTitle = '🌐 Data Connection Issue';
+        errorMessage = 'Unable to fetch market data. Please check your internet connection and ticker symbols, then try again.';
+      } else if (error.message.includes('Insufficient') || error.message.includes('observations')) {
+        errorTitle = '📊 Data Quality Issue';
+        errorMessage = error.message + '\n\nTry using fewer assets, a different time period, or check if the ticker symbols are correct.';
+      } else if (error.message.includes('calculation') || error.message.includes('VaR calculation failed')) {
+        errorTitle = '🧮 Calculation Error';
+        errorMessage = 'The VaR calculation failed due to data issues. Please verify your inputs and try again with different parameters.';
+      } else if (error.message.includes('cancelled')) {
+        errorTitle = '⏹️ Analysis Cancelled';
+        errorMessage = 'Analysis was cancelled by user.';
+      } else if (error.message.includes('Invalid') || error.message.includes('method')) {
+        errorTitle = '⚙️ Configuration Error';
+        errorMessage = 'Invalid analysis configuration. Please check your settings and try again.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert(errorTitle, errorMessage);
+    } finally {
+      setLoading(false);
+      setAnalysisProgress(0);
+      animateProgress(0);
+    }
   };
 
-  const renderMethodCard = (method: typeof varMethods[0]) => (
+  // ===== HELPER FUNCTIONS FOR RESULTS =====
+  const getTotalVaR = (): number => {
+    if (!results) return 0;
+    if (results.individualResults) {
+      return results.individualResults.reduce((sum, r) => sum + r.var, 0);
+    }
+    return results.portfolioResult?.var || 0;
+  };
+
+  const getTotalES = (): number => {
+    if (!results) return 0;
+    if (results.individualResults) {
+      return results.individualResults.reduce((sum, r) => sum + r.expectedShortfall, 0);
+    }
+    return results.portfolioResult?.expectedShortfall || 0;
+  };
+
+  const getVaRColor = (varValue: number, positionSize: number): string => {
+    const varPercent = varValue / positionSize;
+    if (varPercent > 0.05) return '#e74c3c';
+    if (varPercent > 0.02) return '#f39c12';
+    return '#27ae60';
+  };
+
+  // ===== RENDER FUNCTIONS =====
+  const renderMethodCard = (method: VaRMethod) => (
     <Animated.View
       key={method.key}
       style={[
@@ -702,13 +783,13 @@ export default function BeautifulVaRAnalyzer() {
         activeOpacity={0.7}
       >
         <LinearGradient
-          colors={expandedSection === sectionKey ? ['#1f4e79', '#2980b9'] : ['#f8f9fa', '#ffffff']}
+          colors={expandedSection === sectionKey ? ['#e74c3c', '#c0392b'] : ['#f8f9fa', '#ffffff']}
           style={styles.sectionHeaderGradient}
         >
           <View style={styles.sectionHeaderLeft}>
             <Text style={[
               styles.sectionIcon,
-              expandedSection === sectionKey && { fontSize: 28 }
+              expandedSection === sectionKey && { fontSize: 28, color: '#ffffff' }
             ]}>
               {icon}
             </Text>
@@ -722,7 +803,7 @@ export default function BeautifulVaRAnalyzer() {
           <Ionicons
             name={expandedSection === sectionKey ? "chevron-up" : "chevron-down"}
             size={24}
-            color={expandedSection === sectionKey ? "#ffffff" : "#1f4e79"}
+            color={expandedSection === sectionKey ? "#ffffff" : "#e74c3c"}
           />
         </LinearGradient>
       </TouchableOpacity>
@@ -735,34 +816,12 @@ export default function BeautifulVaRAnalyzer() {
     </Animated.View>
   );
 
-  const getTotalVaR = (): number => {
-    if (!results) return 0;
-    if (results.individualResults) {
-      return results.individualResults.reduce((sum, r) => sum + r.var, 0);
-    }
-    return results.portfolioResult?.var || 0;
-  };
-
-  const getTotalES = (): number => {
-    if (!results) return 0;
-    if (results.individualResults) {
-      return results.individualResults.reduce((sum, r) => sum + r.expectedShortfall, 0);
-    }
-    return results.portfolioResult?.expectedShortfall || 0;
-  };
-
-  const getVaRColor = (varValue: number, positionSize: number): string => {
-    const varPercent = varValue / positionSize;
-    if (varPercent > 0.05) return '#e74c3c'; // High risk
-    if (varPercent > 0.02) return '#f39c12'; // Medium risk
-    return '#27ae60'; // Low risk
-  };
-
+  // ===== MAIN RENDER =====
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         
-        {/* Beautiful Header with Gradient */}
+        {/* Beautiful Header */}
         <LinearGradient
           colors={['#e74c3c', '#c0392b', '#a93226']}
           start={{ x: 0, y: 0 }}
@@ -790,11 +849,12 @@ export default function BeautifulVaRAnalyzer() {
                 { transform: [{ scale: pulseAnim }] }
               ]}>
                 <Text style={styles.healthText}>
-                  Data: {dataHealth.overall_status?.split(' ')[1] || '?'}
+                  Data: {dataHealth.overall_status?.split(' ')[1] || 'OK'}
                 </Text>
               </Animated.View>
             )}
 
+            {/* Progress Bar */}
             {loading && (
               <View style={styles.progressContainer}>
                 <View style={styles.progressBar}>
@@ -1037,105 +1097,75 @@ export default function BeautifulVaRAnalyzer() {
               )}
             </LinearGradient>
 
-            {/* Beautiful Tab Navigation */}
-            <View style={styles.tabContainer}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {[
-                  { key: 'summary', label: 'Summary', icon: '📊' },
-                  ...(results.individualResults ? [{ key: 'individual', label: 'Per Asset', icon: '🎯' }] : []),
-                  ...(results.portfolioResult?.componentVaR ? [{ key: 'components', label: 'Components', icon: '🔍' }] : []),
-                  ...(results.stressResults ? [{ key: 'stress', label: 'Stress Tests', icon: '💥' }] : []),
-                  ...(results.backtestResults ? [{ key: 'backtest', label: 'Backtest', icon: '📈' }] : []),
-                  ...(results.portfolioResult?.correlationMatrix ? [{ key: 'correlation', label: 'Correlation', icon: '🔗' }] : [])
-                ].map((tab) => (
-                  <TouchableOpacity
-                    key={tab.key}
-                    style={[styles.tabButton, activeTab === tab.key && styles.tabButtonActive]}
-                    onPress={() => setActiveTab(tab.key)}
-                    activeOpacity={0.7}
-                  >
-                    <LinearGradient
-                      colors={activeTab === tab.key ? ['#e74c3c', '#c0392b'] : ['transparent', 'transparent']}
-                      style={styles.tabGradient}
-                    >
-                      <Text style={styles.tabIcon}>{tab.icon}</Text>
-                      <Text style={[
-                        styles.tabLabel,
-                        activeTab === tab.key && styles.tabLabelActive
-                      ]}>
-                        {tab.label}
-                      </Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
+            {/* Tab Content - Summary */}
+            <LinearGradient
+              colors={['#ffffff', '#f8f9fa']}
+              style={styles.summaryContainer}
+            >
+              <Text style={styles.chartTitle}>📊 Risk Summary</Text>
+              
+              <View style={styles.summaryGrid}>
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryLabel}>Analysis Type</Text>
+                  <Text style={styles.summaryValue}>
+                    {varMethods.find(m => m.key === results.method)?.label}
+                  </Text>
+                  <Text style={styles.summaryPercent}>
+                    {varMethods.find(m => m.key === results.method)?.isIndividual ? 'Individual Assets' : 'Portfolio Level'}
+                  </Text>
+                </View>
+                
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryLabel}>Total VaR ({(results.confidenceLevel * 100).toFixed(0)}%)</Text>
+                  <Text style={styles.summaryValue}>${getTotalVaR().toLocaleString()}</Text>
+                  <Text style={styles.summaryPercent}>
+                    {((getTotalVaR() / results.positionSize) * 100).toFixed(2)}% of portfolio
+                  </Text>
+                </View>
+                
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryLabel}>Expected Shortfall</Text>
+                  <Text style={styles.summaryValue}>${getTotalES().toLocaleString()}</Text>
+                  <Text style={styles.summaryPercent}>
+                    Average loss beyond VaR
+                  </Text>
+                </View>
+              </View>
 
-            {/* Tab Content */}
-            <View style={styles.tabContent}>
-              {activeTab === 'summary' && (
-                <LinearGradient
-                  colors={['#ffffff', '#f8f9fa']}
-                  style={styles.summaryContainer}
-                >
-                  <Text style={styles.chartTitle}>📊 Risk Summary</Text>
-                  
-                  <View style={styles.summaryGrid}>
-                    <View style={styles.summaryItem}>
-                      <Text style={styles.summaryLabel}>Analysis Type</Text>
-                      <Text style={styles.summaryValue}>
-                        {varMethods.find(m => m.key === results.method)?.label}
-                      </Text>
-                      <Text style={styles.summaryPercent}>
-                        {varMethods.find(m => m.key === results.method)?.isIndividual ? 'Individual Assets' : 'Portfolio Level'}
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.summaryItem}>
-                      <Text style={styles.summaryLabel}>Total VaR ({(results.confidenceLevel * 100).toFixed(0)}%)</Text>
-                      <Text style={styles.summaryValue}>${getTotalVaR().toLocaleString()}</Text>
-                      <Text style={styles.summaryPercent}>
-                        {((getTotalVaR() / results.positionSize) * 100).toFixed(2)}% of portfolio
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.summaryItem}>
-                      <Text style={styles.summaryLabel}>Expected Shortfall</Text>
-                      <Text style={styles.summaryValue}>${getTotalES().toLocaleString()}</Text>
-                      <Text style={styles.summaryPercent}>
-                        Average loss beyond VaR
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.riskInterpretation}>
-                    <Text style={styles.interpretationTitle}>🎯 Risk Interpretation</Text>
-                    <Text style={styles.interpretationText}>
-                      With {(results.confidenceLevel * 100).toFixed(0)}% confidence, your maximum daily loss should not exceed{' '}
-                      <Text style={[styles.interpretationHighlight, { color: getVaRColor(getTotalVaR(), results.positionSize) }]}>
-                        ${(getTotalVaR() / 1000).toFixed(0)}k
-                      </Text>{' '}
-                      under normal market conditions.
+              {/* Risk Interpretation */}
+              <View style={styles.riskInterpretation}>
+                <Text style={styles.interpretationTitle}>🎯 Risk Interpretation</Text>
+                <Text style={styles.interpretationText}>
+                  With {(results.confidenceLevel * 100).toFixed(0)}% confidence, your maximum daily loss should not exceed{' '}
+                  <Text style={[styles.interpretationHighlight, { color: getVaRColor(getTotalVaR(), results.positionSize) }]}>
+                    ${(getTotalVaR() / 1000).toFixed(0)}k
+                  </Text>{' '}
+                  under normal market conditions.
+                </Text>
+                
+                {results.portfolioResult?.diversificationBenefit && results.portfolioResult.diversificationBenefit > 0.1 && (
+                  <Text style={styles.interpretationText}>
+                    Your portfolio benefits from{' '}
+                    <Text style={[styles.interpretationHighlight, { color: '#27ae60' }]}>
+                      {(results.portfolioResult.diversificationBenefit * 100).toFixed(1)}% diversification
                     </Text>
-                    
-                    {results.portfolioResult?.diversificationBenefit && results.portfolioResult.diversificationBenefit > 0.1 && (
-                      <Text style={styles.interpretationText}>
-                        Your portfolio benefits from{' '}
-                        <Text style={[styles.interpretationHighlight, { color: '#27ae60' }]}>
-                          {(results.portfolioResult.diversificationBenefit * 100).toFixed(1)}% diversification
-                        </Text>
-                        , reducing risk compared to concentrated positions.
-                      </Text>
-                    )}
-                  </View>
-                </LinearGradient>
-              )}
+                    , reducing risk compared to concentrated positions.
+                  </Text>
+                )}
 
-              {/* Other tab content remains the same but with enhanced styling... */}
-              {/* Individual, Components, Stress, Backtest, Correlation tabs... */}
-            </View>
+                {results.backtestResults && (
+                  <Text style={styles.interpretationText}>
+                    Backtest Result:{' '}
+                    <Text style={[styles.interpretationHighlight, { color: results.backtestResults.passedTest ? '#27ae60' : '#e74c3c' }]}>
+                      {results.backtestResults.passedTest ? 'PASSED' : 'FAILED'}
+                    </Text>{' '}
+                    ({results.backtestResults.exceedanceRate.toFixed(1)}% vs {results.backtestResults.expectedRate.toFixed(1)}% expected)
+                  </Text>
+                )}
+              </View>
+            </LinearGradient>
 
-            {/* Enhanced Metadata */}
+            {/* Metadata */}
             <LinearGradient
               colors={['#f8f9fa', '#ffffff']}
               style={styles.metadata}
@@ -1167,6 +1197,7 @@ export default function BeautifulVaRAnalyzer() {
   );
 }
 
+// ===== STYLES =====
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1489,47 +1520,6 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     textAlign: 'center',
     fontWeight: '500',
-  },
-  tabContainer: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 6,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  tabButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginRight: 8,
-  },
-  tabButtonActive: {},
-  tabGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 6,
-    minWidth: 100,
-  },
-  tabIcon: {
-    fontSize: 16,
-  },
-  tabLabel: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
-  },
-  tabLabelActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  tabContent: {
-    marginBottom: 16,
   },
   summaryContainer: {
     borderRadius: 16,
