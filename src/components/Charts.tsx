@@ -1,617 +1,571 @@
-// src/components/Charts.tsx - ENHANCED WITH BEAUTIFUL ANIMATIONS
-// Enhanced with beautiful animations, better interactions, and modern design
+// src/components/Charts.tsx
+// Composants de graphiques financiers robustes et interactifs
 
-import '../polyfills';
-import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, Animated, TouchableOpacity } from 'react-native';
-import { VictoryChart, VictoryScatter, VictoryPie, VictoryArea, VictoryAxis, 
-         VictoryLine, VictoryLabel, VictoryTheme, VictoryContainer, VictoryTooltip,
-         VictoryBar, VictoryBoxPlot } from 'victory-native';
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Dimensions,
+  ScrollView,
+} from 'react-native';
+import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 const chartWidth = width - 40;
-const chartHeight = 300;
 
-// Enhanced Performance Chart with beautiful animations
-interface PerformanceChartProps {
-  data: Array<{
-    date: Date;
-    value: number;
-    portfolio?: number;
-    benchmark?: number;
-  }>;
-  title?: string;
-  showBenchmark?: boolean;
-  showDrawdown?: boolean;
+// Interface pour les données de performance
+interface PerformanceData {
+  dates: string[];
+  returns: number[];
+  cumulative: number[];
+  benchmark?: number[];
 }
 
-export const PerformanceChart: React.FC<PerformanceChartProps> = ({
-  data,
-  title = "Portfolio Performance",
-  showBenchmark = true,
-  showDrawdown = false
-}) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+// Interface pour les résultats VaR
+interface VaRData {
+  var95: number;
+  var99: number;
+  expectedShortfall: number;
+  volatility: number;
+  sharpeRatio: number;
+  maxDrawdown: number;
+  distribution: number[];
+}
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 1000,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 20,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
+// Interface pour la frontière efficiente
+interface EfficientFrontierData {
+  points: Array<{ x: number; y: number; sharpe: number }>;
+  optimal: { x: number; y: number; sharpe: number };
+}
 
-  // Prepare data for visualization
-  const chartData = data.map((point, index) => ({
-    x: index,
-    y: point.value,
-    portfolio: point.portfolio || point.value,
-    benchmark: point.benchmark || 0,
-    date: point.date,
-    label: `${point.date.toLocaleDateString()}\nPortfolio: ${(point.value * 100).toFixed(2)}%${
-      point.benchmark ? `\nBenchmark: ${(point.benchmark * 100).toFixed(2)}%` : ''
-    }`
-  }));
+// Interface pour les poids du portefeuille
+interface PortfolioWeightsData {
+  tickers: string[];
+  weights: number[];
+  colors: string[];
+}
 
-  const portfolioData = chartData.map(d => ({ x: d.x, y: d.portfolio * 100 }));
-  const benchmarkData = showBenchmark ? chartData.map(d => ({ x: d.x, y: d.benchmark * 100 })) : [];
+// Interface pour l'allocation de capital
+interface CapitalAllocationData {
+  riskyWeight: number;
+  riskFreeWeight: number;
+  expectedReturn: number;
+  volatility: number;
+}
+
+// Interface pour l'analyse CAPM
+interface CAPMData {
+  tickers: string[];
+  betas: number[];
+  alphas: number[];
+  expectedReturns: number[];
+}
+
+// Interface pour la matrice de corrélation
+interface CorrelationData {
+  tickers: string[];
+  matrix: number[][];
+}
+
+// Composant de graphique de performance
+export const PerformanceChart: React.FC<{ data: PerformanceData }> = ({ data }) => {
+  const chartData = {
+    labels: data.dates.slice(-12), // Derniers 12 points
+    datasets: [
+      {
+        data: data.cumulative.slice(-12),
+        color: (opacity = 1) => `rgba(46, 125, 50, ${opacity})`,
+        strokeWidth: 3,
+      },
+      ...(data.benchmark ? [{
+        data: data.benchmark.slice(-12),
+        color: (opacity = 1) => `rgba(255, 152, 0, ${opacity})`,
+        strokeWidth: 2,
+      }] : []),
+    ],
+  };
 
   return (
-    <Animated.View 
-      style={[
-        styles.chartContainer,
-        {
-          opacity: fadeAnim,
-          transform: [{ scale: scaleAnim }]
-        }
-      ]}
-    >
+    <View style={styles.chartContainer}>
       <LinearGradient
-        colors={['#ffffff', '#f8f9fa']}
+        colors={['#e8f5e8', '#ffffff']}
         style={styles.chartGradient}
       >
-        <Text style={styles.chartTitle}>{title}</Text>
-        <Text style={styles.chartSubtitle}>
-          Cumulative Returns Over Time
-        </Text>
+        <Text style={styles.chartTitle}>📈 Performance du Portefeuille</Text>
+        <Text style={styles.chartSubtitle}>Rendements cumulés au fil du temps</Text>
         
-        <VictoryChart
-          theme={VictoryTheme.material}
+        <LineChart
+          data={chartData}
           width={chartWidth}
-          height={chartHeight}
-          padding={{ left: 80, top: 20, right: 60, bottom: 80 }}
-          containerComponent={<VictoryContainer responsive={false} />}
-        >
-          {/* Performance area chart */}
-          <VictoryArea
-            data={portfolioData}
-            style={{
-              data: { 
-                fill: "url(#portfolioGradient)", 
-                fillOpacity: 0.6,
-                stroke: "#1f4e79",
-                strokeWidth: 3
-              }
-            }}
-            animate={{
-              duration: 2000,
-              onLoad: { duration: 500 }
-            }}
-          />
+          height={220}
+          chartConfig={{
+            backgroundColor: 'transparent',
+            backgroundGradientFrom: '#ffffff',
+            backgroundGradientTo: '#ffffff',
+            decimalPlaces: 2,
+            color: (opacity = 1) => `rgba(46, 125, 50, ${opacity})`,
+            labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+            style: { borderRadius: 16 },
+            propsForDots: {
+              r: '4',
+              strokeWidth: '2',
+              stroke: '#2e7d32',
+            },
+          }}
+          bezier
+          style={styles.chart}
+        />
 
-          {/* Benchmark line */}
-          {showBenchmark && benchmarkData.length > 0 && (
-            <VictoryLine
-              data={benchmarkData}
-              style={{
-                data: { 
-                  stroke: "#e74c3c", 
-                  strokeWidth: 2,
-                  strokeDasharray: "5,5"
-                }
-              }}
-              animate={{
-                duration: 2000,
-                onLoad: { duration: 1000 }
-              }}
-            />
-          )}
-
-          {/* Interactive points */}
-          <VictoryScatter
-            data={portfolioData.filter((_, i) => i % Math.floor(portfolioData.length / 10) === 0)}
-            size={4}
-            style={{
-              data: { fill: "#1f4e79", stroke: "#ffffff", strokeWidth: 2 }
-            }}
-            labelComponent={
-              <VictoryTooltip
-                flyoutStyle={{ 
-                  fill: "white", 
-                  stroke: "#1f4e79",
-                  strokeWidth: 2,
-                  dropShadow: "2px 2px 4px rgba(0,0,0,0.1)"
-                }}
-                style={{ fontSize: 12, fill: "#1f4e79" }}
-              />
-            }
-            labels={({ datum, index }) => 
-              `Portfolio: ${datum.y.toFixed(2)}%\nPeriod: ${Math.floor(index * portfolioData.length / 10)}`
-            }
-          />
-
-          <VictoryAxis
-            dependentAxis
-            tickFormat={(x) => `${x.toFixed(1)}%`}
-            style={{
-              tickLabels: { fontSize: 12, fill: "#444" },
-              axis: { stroke: "#666" },
-              grid: { stroke: "#e0e0e0", strokeDasharray: "2,2" }
-            }}
-          />
-          
-          <VictoryAxis
-            tickFormat={() => ""}
-            style={{
-              tickLabels: { fontSize: 10, fill: "#444" },
-              axis: { stroke: "#666" }
-            }}
-          />
-        </VictoryChart>
-
-        {/* Performance Statistics */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Total Return</Text>
-            <Text style={[styles.statValue, { color: portfolioData[portfolioData.length - 1]?.y > 0 ? '#27ae60' : '#e74c3c' }]}>
-              {portfolioData[portfolioData.length - 1]?.y.toFixed(2)}%
+            <Text style={styles.statLabel}>Rendement Total</Text>
+            <Text style={[styles.statValue, { color: data.cumulative[data.cumulative.length - 1] >= 0 ? '#2e7d32' : '#d32f2f' }]}>
+              {((data.cumulative[data.cumulative.length - 1] || 0) * 100).toFixed(2)}%
             </Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Volatility</Text>
+            <Text style={styles.statLabel}>Volatilité</Text>
             <Text style={styles.statValue}>
-              {calculateVolatility(portfolioData).toFixed(2)}%
+              {(Math.sqrt(data.returns.reduce((acc, r) => acc + r * r, 0) / data.returns.length) * Math.sqrt(252) * 100).toFixed(2)}%
             </Text>
           </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Max Drawdown</Text>
-            <Text style={[styles.statValue, { color: '#e74c3c' }]}>
-              {calculateMaxDrawdown(portfolioData).toFixed(2)}%
-            </Text>
-          </View>
-        </View>
-
-        {/* Legend */}
-        <View style={styles.legend}>
-          <View style={styles.legendRow}>
-            <View style={[styles.legendColor, { backgroundColor: '#1f4e79' }]} />
-            <Text style={styles.legendText}>Portfolio</Text>
-          </View>
-          {showBenchmark && (
-            <View style={styles.legendRow}>
-              <View style={[styles.legendColor, { backgroundColor: '#e74c3c', height: 2 }]} />
-              <Text style={styles.legendText}>Benchmark</Text>
-            </View>
-          )}
         </View>
       </LinearGradient>
-    </Animated.View>
+    </View>
   );
 };
 
-// Enhanced VaR Visualization Chart
-interface VaRVisualizationProps {
-  returns: number[];
-  varValue: number;
-  confidenceLevel: number;
-  method: string;
-  expectedShortfall?: number;
-}
-
-export const VaRVisualizationChart: React.FC<VaRVisualizationProps> = ({
-  returns,
-  varValue,
-  confidenceLevel,
-  method,
-  expectedShortfall
-}) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1000,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  // Create histogram data
-  const histogram = createHistogram(returns, 50);
-  const varPercentile = 1 - confidenceLevel;
-  const varThreshold = -Math.abs(varValue);
+// Composant de visualisation VaR
+export const VaRVisualizationChart: React.FC<{ data: VaRData }> = ({ data }) => {
+  const distributionData = {
+    labels: data.distribution.map((_, i) => (i - 50).toString()),
+    datasets: [{
+      data: data.distribution,
+      color: (opacity = 1) => `rgba(231, 76, 60, ${opacity})`,
+    }],
+  };
 
   return (
-    <Animated.View 
-      style={[
-        styles.chartContainer,
-        { opacity: fadeAnim }
-      ]}
-    >
+    <View style={styles.chartContainer}>
       <LinearGradient
-        colors={['#ffffff', '#fff5f5']}
+        colors={['#ffebee', '#ffffff']}
         style={styles.chartGradient}
       >
-        <Text style={styles.chartTitle}>📊 VaR Distribution Analysis</Text>
-        <Text style={styles.chartSubtitle}>
-          {method} • {(confidenceLevel * 100).toFixed(0)}% Confidence Level
-        </Text>
-        
-        <VictoryChart
-          theme={VictoryTheme.material}
+        <Text style={styles.chartTitle}>⚠️ Analyse Value-at-Risk</Text>
+        <Text style={styles.chartSubtitle}>Distribution des rendements et métriques de risque</Text>
+
+        <LineChart
+          data={distributionData}
           width={chartWidth}
-          height={chartHeight}
-          padding={{ left: 80, top: 20, right: 60, bottom: 80 }}
-        >
-          {/* Histogram bars */}
-          <VictoryBar
-            data={histogram}
-            style={{
-              data: { 
-                fill: ({ datum }) => datum.x < varThreshold ? "#e74c3c" : "#3498db",
-                fillOpacity: 0.7,
-                stroke: "#ffffff",
-                strokeWidth: 1
-              }
-            }}
-            animate={{
-              duration: 1500,
-              onLoad: { duration: 500 }
-            }}
-          />
+          height={200}
+          chartConfig={{
+            backgroundColor: 'transparent',
+            backgroundGradientFrom: '#ffffff',
+            backgroundGradientTo: '#ffffff',
+            decimalPlaces: 3,
+            color: (opacity = 1) => `rgba(231, 76, 60, ${opacity})`,
+            labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+            style: { borderRadius: 16 },
+          }}
+          style={styles.chart}
+        />
 
-          {/* VaR threshold line */}
-          <VictoryLine
-            data={[
-              { x: varThreshold, y: 0 },
-              { x: varThreshold, y: Math.max(...histogram.map(d => d.y)) }
-            ]}
-            style={{
-              data: { stroke: "#e74c3c", strokeWidth: 3, strokeDasharray: "5,5" }
-            }}
-          />
-
-          {/* Expected Shortfall line */}
-          {expectedShortfall && (
-            <VictoryLine
-              data={[
-                { x: -Math.abs(expectedShortfall), y: 0 },
-                { x: -Math.abs(expectedShortfall), y: Math.max(...histogram.map(d => d.y)) }
-              ]}
-              style={{
-                data: { stroke: "#8e44ad", strokeWidth: 2, strokeDasharray: "3,3" }
-              }}
-            />
-          )}
-
-          <VictoryAxis
-            dependentAxis
-            tickFormat={(x) => x.toString()}
-            style={{
-              tickLabels: { fontSize: 12, fill: "#444" },
-              axis: { stroke: "#666" },
-              grid: { stroke: "#f0f0f0" }
-            }}
-          />
-          
-          <VictoryAxis
-            tickFormat={(x) => `${(x * 100).toFixed(1)}%`}
-            style={{
-              tickLabels: { fontSize: 11, fill: "#444" },
-              axis: { stroke: "#666" }
-            }}
-          />
-        </VictoryChart>
-
-        {/* VaR Statistics */}
         <View style={styles.varStatsContainer}>
           <View style={[styles.varStatItem, { borderLeftColor: '#e74c3c' }]}>
-            <Text style={styles.varStatLabel}>Value at Risk</Text>
+            <Text style={styles.varStatLabel}>VaR 95%</Text>
             <Text style={[styles.varStatValue, { color: '#e74c3c' }]}>
-              {(Math.abs(varValue) * 100).toFixed(2)}%
+              {(data.var95 * 100).toFixed(2)}%
             </Text>
           </View>
-          {expectedShortfall && (
-            <View style={[styles.varStatItem, { borderLeftColor: '#8e44ad' }]}>
-              <Text style={styles.varStatLabel}>Expected Shortfall</Text>
-              <Text style={[styles.varStatValue, { color: '#8e44ad' }]}>
-                {(Math.abs(expectedShortfall) * 100).toFixed(2)}%
-              </Text>
-            </View>
-          )}
-          <View style={[styles.varStatItem, { borderLeftColor: '#2980b9' }]}>
-            <Text style={styles.varStatLabel}>Tail Probability</Text>
-            <Text style={[styles.varStatValue, { color: '#2980b9' }]}>
-              {(varPercentile * 100).toFixed(1)}%
+          <View style={[styles.varStatItem, { borderLeftColor: '#c0392b' }]}>
+            <Text style={styles.varStatLabel}>VaR 99%</Text>
+            <Text style={[styles.varStatValue, { color: '#c0392b' }]}>
+              {(data.var99 * 100).toFixed(2)}%
+            </Text>
+          </View>
+          <View style={[styles.varStatItem, { borderLeftColor: '#8e44ad' }]}>
+            <Text style={styles.varStatLabel}>Expected Shortfall</Text>
+            <Text style={[styles.varStatValue, { color: '#8e44ad' }]}>
+              {(data.expectedShortfall * 100).toFixed(2)}%
             </Text>
           </View>
         </View>
 
-        {/* Risk Interpretation */}
         <View style={styles.riskInterpretation}>
-          <Text style={styles.interpretationTitle}>🎯 Risk Interpretation</Text>
+          <Text style={styles.interpretationTitle}>💡 Interprétation du Risque</Text>
           <Text style={styles.interpretationText}>
-            With {(confidenceLevel * 100).toFixed(0)}% confidence, daily losses should not exceed{' '}
-            <Text style={styles.interpretationHighlight}>
-              {(Math.abs(varValue) * 100).toFixed(2)}%
-            </Text>{' '}
-            under normal market conditions.
+            {getRiskInterpretation(data.var95 * 100, data.volatility * 100, data.sharpeRatio)}
           </Text>
-          {expectedShortfall && (
-            <Text style={styles.interpretationText}>
-              If losses exceed VaR, the expected loss is{' '}
-              <Text style={[styles.interpretationHighlight, { color: '#8e44ad' }]}>
-                {(Math.abs(expectedShortfall) * 100).toFixed(2)}%
-              </Text>
-              .
-            </Text>
-          )}
         </View>
       </LinearGradient>
-    </Animated.View>
+    </View>
   );
 };
 
-// Enhanced Risk Metrics Dashboard
-interface RiskMetricsDashboardProps {
-  metrics: {
-    var95: number;
-    var99: number;
-    expectedShortfall: number;
-    maxDrawdown: number;
-    volatility: number;
-    skewness: number;
-    kurtosis: number;
-    sharpeRatio: number;
-  };
-}
-
-export const RiskMetricsDashboard: React.FC<RiskMetricsDashboardProps> = ({ metrics }) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        tension: 20,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
-
-  const riskMetrics = [
-    { 
-      label: 'VaR (95%)', 
-      value: metrics.var95, 
-      format: 'percentage', 
-      icon: '⚠️',
-      color: '#e74c3c',
-      description: 'Maximum loss at 95% confidence'
-    },
-    { 
-      label: 'VaR (99%)', 
-      value: metrics.var99, 
-      format: 'percentage', 
-      icon: '🚨',
-      color: '#c0392b',
-      description: 'Maximum loss at 99% confidence'
-    },
-    { 
-      label: 'Expected Shortfall', 
-      value: metrics.expectedShortfall, 
-      format: 'percentage', 
+// Composant Dashboard des métriques de risque
+export const RiskMetricsDashboard: React.FC<{ data: VaRData }> = ({ data }) => {
+  const metrics = [
+    {
+      label: 'VaR 95%',
+      value: `${(data.var95 * 100).toFixed(2)}%`,
       icon: '📉',
-      color: '#8e44ad',
-      description: 'Average loss beyond VaR'
+      color: '#e74c3c',
+      description: 'Perte maximale avec 95% de confiance',
+      riskLevel: Math.min(Math.abs(data.var95) * 100 / 10, 1),
     },
-    { 
-      label: 'Max Drawdown', 
-      value: metrics.maxDrawdown, 
-      format: 'percentage', 
-      icon: '⬇️',
-      color: '#d35400',
-      description: 'Largest peak-to-trough decline'
-    },
-    { 
-      label: 'Volatility', 
-      value: metrics.volatility, 
-      format: 'percentage', 
+    {
+      label: 'Volatilité',
+      value: `${(data.volatility * 100).toFixed(2)}%`,
       icon: '📊',
-      color: '#2980b9',
-      description: 'Annualized standard deviation'
-    },
-    { 
-      label: 'Sharpe Ratio', 
-      value: metrics.sharpeRatio, 
-      format: 'ratio', 
-      icon: '⚡',
-      color: '#27ae60',
-      description: 'Risk-adjusted return measure'
-    },
-    { 
-      label: 'Skewness', 
-      value: metrics.skewness, 
-      format: 'ratio', 
-      icon: '📈',
       color: '#f39c12',
-      description: 'Distribution asymmetry'
+      description: 'Écart-type des rendements annualisé',
+      riskLevel: Math.min(data.volatility * 100 / 30, 1),
     },
-    { 
-      label: 'Kurtosis', 
-      value: metrics.kurtosis, 
-      format: 'ratio', 
-      icon: '🎯',
+    {
+      label: 'Ratio de Sharpe',
+      value: data.sharpeRatio.toFixed(3),
+      icon: '⚖️',
+      color: data.sharpeRatio > 1 ? '#27ae60' : data.sharpeRatio > 0.5 ? '#f39c12' : '#e74c3c',
+      description: 'Rendement ajusté du risque',
+      riskLevel: Math.max(1 - Math.max(data.sharpeRatio, 0) / 2, 0),
+    },
+    {
+      label: 'Drawdown Max',
+      value: `${(data.maxDrawdown * 100).toFixed(2)}%`,
+      icon: '📉',
       color: '#9b59b6',
-      description: 'Tail thickness measure'
+      description: 'Perte maximale depuis un pic',
+      riskLevel: Math.min(Math.abs(data.maxDrawdown) * 100 / 20, 1),
     },
   ];
 
   return (
-    <Animated.View 
-      style={[
-        styles.dashboardContainer,
-        {
-          opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }]
-        }
-      ]}
-    >
+    <View style={styles.dashboardContainer}>
       <LinearGradient
-        colors={['#ffffff', '#f8f9fa']}
+        colors={['#f8f9fa', '#ffffff']}
         style={styles.dashboardGradient}
       >
-        <Text style={styles.dashboardTitle}>📊 Risk Metrics Dashboard</Text>
-        <Text style={styles.dashboardSubtitle}>Comprehensive Risk Analysis</Text>
-        
+        <Text style={styles.dashboardTitle}>🎯 Métriques de Risque</Text>
+        <Text style={styles.dashboardSubtitle}>Tableau de bord des indicateurs clés</Text>
+
         <View style={styles.metricsGrid}>
-          {riskMetrics.map((metric, index) => (
-            <Animated.View
-              key={metric.label}
-              style={[
-                styles.metricCard,
-                { borderLeftColor: metric.color }
-              ]}
-            >
-              <TouchableOpacity 
-                style={styles.metricContent}
-                activeOpacity={0.8}
-              >
+          {metrics.map((metric, index) => (
+            <View key={index} style={[styles.metricCard, { borderLeftColor: metric.color }]}>
+              <View style={styles.metricContent}>
                 <View style={styles.metricHeader}>
-                  <Text style={styles.metricIcon}>{metric.icon}</Text>
+                  <Text style={[styles.metricIcon, { color: metric.color }]}>{metric.icon}</Text>
                   <Text style={styles.metricLabel}>{metric.label}</Text>
                 </View>
-                
-                <Text style={[styles.metricValue, { color: metric.color }]}>
-                  {metric.format === 'percentage' 
-                    ? `${(Math.abs(metric.value) * 100).toFixed(2)}%`
-                    : metric.value.toFixed(3)
-                  }
-                </Text>
-                
+                <Text style={[styles.metricValue, { color: metric.color }]}>{metric.value}</Text>
                 <Text style={styles.metricDescription}>{metric.description}</Text>
-                
-                {/* Risk level indicator */}
                 <View style={styles.riskIndicator}>
-                  <View 
+                  <View
                     style={[
                       styles.riskBar,
-                      { 
-                        width: `${Math.min(Math.abs(metric.value) * 100, 100)}%`,
-                        backgroundColor: metric.color + '30'
-                      }
+                      {
+                        width: `${metric.riskLevel * 100}%`,
+                        backgroundColor: metric.color,
+                      },
                     ]}
                   />
                 </View>
-              </TouchableOpacity>
-            </Animated.View>
+              </View>
+            </View>
           ))}
         </View>
-        
-        {/* Risk Assessment Summary */}
+
         <View style={styles.riskSummary}>
-          <Text style={styles.riskSummaryTitle}>🎯 Risk Assessment</Text>
+          <Text style={styles.riskSummaryTitle}>📋 Résumé du Risque</Text>
           <Text style={styles.riskSummaryText}>
-            {getRiskAssessment(metrics)}
+            {getRiskInterpretation(data.var95 * 100, data.volatility * 100, data.sharpeRatio)}
           </Text>
         </View>
       </LinearGradient>
-    </Animated.View>
+    </View>
   );
 };
 
-// Utility functions
-function calculateVolatility(data: Array<{ x: number; y: number }>): number {
-  if (data.length < 2) return 0;
-  
-  const returns = data.slice(1).map((point, i) => 
-    (point.y - data[i].y) / data[i].y
+// Composant Frontière Efficiente
+export const EfficientFrontierChart: React.FC<{ data: EfficientFrontierData }> = ({ data }) => {
+  const chartData = {
+    labels: data.points.map(p => p.x.toFixed(2)),
+    datasets: [{
+      data: data.points.map(p => p.y),
+      color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
+    }],
+  };
+
+  return (
+    <View style={styles.chartContainer}>
+      <LinearGradient
+        colors={['#e3f2fd', '#ffffff']}
+        style={styles.chartGradient}
+      >
+        <Text style={styles.chartTitle}>📈 Frontière Efficiente</Text>
+        <Text style={styles.chartSubtitle}>Optimisation Risque-Rendement selon Markowitz</Text>
+        
+        <LineChart
+          data={chartData}
+          width={chartWidth}
+          height={220}
+          chartConfig={{
+            backgroundColor: 'transparent',
+            backgroundGradientFrom: '#ffffff',
+            backgroundGradientTo: '#ffffff',
+            decimalPlaces: 3,
+            color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
+            labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+            style: { borderRadius: 16 },
+          }}
+          style={styles.chart}
+        />
+
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Portefeuille Optimal</Text>
+            <Text style={styles.statValue}>
+              Sharpe: {data.optimal.sharpe.toFixed(3)}
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Rendement</Text>
+            <Text style={styles.statValue}>
+              {(data.optimal.y * 100).toFixed(2)}%
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+    </View>
   );
-  
-  const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
-  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / (returns.length - 1);
-  
-  return Math.sqrt(variance * 252) * 100; // Annualized percentage
-}
+};
 
-function calculateMaxDrawdown(data: Array<{ x: number; y: number }>): number {
-  let maxDrawdown = 0;
-  let peak = data[0]?.y || 0;
-  
-  for (const point of data) {
-    if (point.y > peak) {
-      peak = point.y;
-    }
-    const drawdown = (peak - point.y) / peak * 100;
-    if (drawdown > maxDrawdown) {
-      maxDrawdown = drawdown;
-    }
-  }
-  
-  return maxDrawdown;
-}
-
-function createHistogram(data: number[], bins: number): Array<{ x: number; y: number }> {
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const binWidth = (max - min) / bins;
-  
-  const histogram = Array(bins).fill(0).map((_, i) => ({
-    x: min + i * binWidth + binWidth / 2,
-    y: 0
+// Composant Poids du Portefeuille
+export const PortfolioWeightsChart: React.FC<{ data: PortfolioWeightsData }> = ({ data }) => {
+  const pieData = data.tickers.map((ticker, index) => ({
+    name: ticker,
+    population: data.weights[index] * 100,
+    color: data.colors[index] || `#${Math.floor(Math.random()*16777215).toString(16)}`,
+    legendFontColor: '#2c3e50',
+    legendFontSize: 12,
   }));
-  
-  data.forEach(value => {
-    const binIndex = Math.min(Math.floor((value - min) / binWidth), bins - 1);
-    histogram[binIndex].y++;
-  });
-  
-  return histogram;
-}
 
-function getRiskAssessment(metrics: any): string {
-  const var95 = Math.abs(metrics.var95) * 100;
-  const volatility = metrics.volatility * 100;
-  const sharpe = metrics.sharpeRatio;
-  
-  if (var95 < 2 && volatility < 15 && sharpe > 1) {
-    return "✅ Low Risk: Portfolio shows conservative risk profile with good risk-adjusted returns.";
-  } else if (var95 < 5 && volatility < 25 && sharpe > 0.5) {
-    return "⚠️ Moderate Risk: Balanced risk-return profile suitable for most investors.";
-  } else if (var95 < 10 && volatility < 40) {
-    return "🔶 High Risk: Elevated risk levels requiring careful monitoring and risk management.";
+  return (
+    <View style={styles.chartContainer}>
+      <LinearGradient
+        colors={['#f0f8ff', '#ffffff']}
+        style={styles.chartGradient}
+      >
+        <Text style={styles.chartTitle}>🥧 Allocation du Portefeuille</Text>
+        <Text style={styles.chartSubtitle}>Répartition optimale des actifs</Text>
+        
+        <PieChart
+          data={pieData}
+          width={chartWidth}
+          height={220}
+          chartConfig={{
+            color: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+          }}
+          accessor="population"
+          backgroundColor="transparent"
+          paddingLeft="15"
+          absolute
+        />
+      </LinearGradient>
+    </View>
+  );
+};
+
+// Composant Allocation de Capital
+export const CapitalAllocationChart: React.FC<{ data: CapitalAllocationData }> = ({ data }) => {
+  const allocationData = {
+    labels: ['Actifs Risqués', 'Actifs Sans Risque'],
+    datasets: [{
+      data: [data.riskyWeight * 100, data.riskFreeWeight * 100],
+    }],
+  };
+
+  return (
+    <View style={styles.chartContainer}>
+      <LinearGradient
+        colors={['#fff3e0', '#ffffff']}
+        style={styles.chartGradient}
+      >
+        <Text style={styles.chartTitle}>⚖️ Allocation de Capital</Text>
+        <Text style={styles.chartSubtitle}>Répartition optimale selon la théorie moderne du portefeuille</Text>
+        
+        <BarChart
+          data={allocationData}
+          width={chartWidth}
+          height={220}
+          chartConfig={{
+            backgroundColor: 'transparent',
+            backgroundGradientFrom: '#ffffff',
+            backgroundGradientTo: '#ffffff',
+            decimalPlaces: 1,
+            color: (opacity = 1) => `rgba(255, 152, 0, ${opacity})`,
+            labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+            style: { borderRadius: 16 },
+          }}
+          style={styles.chart}
+        />
+
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Rendement Attendu</Text>
+            <Text style={styles.statValue}>
+              {(data.expectedReturn * 100).toFixed(2)}%
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Volatilité</Text>
+            <Text style={styles.statValue}>
+              {(data.volatility * 100).toFixed(2)}%
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+};
+
+// Composant Analyse CAPM
+export const CAPMAnalysisChart: React.FC<{ data: CAPMData }> = ({ data }) => {
+  const betaData = {
+    labels: data.tickers,
+    datasets: [{
+      data: data.betas,
+      color: (opacity = 1) => `rgba(155, 89, 182, ${opacity})`,
+    }],
+  };
+
+  return (
+    <View style={styles.chartContainer}>
+      <LinearGradient
+        colors={['#f3e5f5', '#ffffff']}
+        style={styles.chartGradient}
+      >
+        <Text style={styles.chartTitle}>📊 Analyse CAPM</Text>
+        <Text style={styles.chartSubtitle}>Betas et rendements attendus selon le modèle CAPM</Text>
+        
+        <BarChart
+          data={betaData}
+          width={chartWidth}
+          height={220}
+          chartConfig={{
+            backgroundColor: 'transparent',
+            backgroundGradientFrom: '#ffffff',
+            backgroundGradientTo: '#ffffff',
+            decimalPlaces: 2,
+            color: (opacity = 1) => `rgba(155, 89, 182, ${opacity})`,
+            labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+            style: { borderRadius: 16 },
+          }}
+          style={styles.chart}
+        />
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }}>
+          <View style={styles.legend}>
+            {data.tickers.map((ticker, index) => (
+              <View key={ticker} style={styles.legendRow}>
+                <View style={[styles.legendColor, { backgroundColor: '#9b59b6' }]} />
+                <Text style={styles.legendText}>
+                  {ticker}: β={data.betas[index].toFixed(2)}, α={data.alphas[index].toFixed(3)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </LinearGradient>
+    </View>
+  );
+};
+
+// Composant Matrice de Corrélation
+export const CorrelationMatrixChart: React.FC<{ data: CorrelationData }> = ({ data }) => {
+  return (
+    <View style={styles.chartContainer}>
+      <LinearGradient
+        colors={['#e8f5e8', '#ffffff']}
+        style={styles.chartGradient}
+      >
+        <Text style={styles.chartTitle}>🔗 Matrice de Corrélation</Text>
+        <Text style={styles.chartSubtitle}>Corrélations entre les actifs du portefeuille</Text>
+        
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={{ padding: 16 }}>
+            <View style={{ flexDirection: 'row' }}>
+              <View style={{ width: 80 }} />
+              {data.tickers.map(ticker => (
+                <View key={ticker} style={{ width: 60, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#2c3e50' }}>
+                    {ticker}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            
+            {data.matrix.map((row, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 80, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#2c3e50' }}>
+                    {data.tickers[i]}
+                  </Text>
+                </View>
+                {row.map((corr, j) => (
+                  <View
+                    key={j}
+                    style={{
+                      width: 60,
+                      height: 40,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: getCorrelationColor(corr),
+                      margin: 1,
+                      borderRadius: 4,
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: 10,
+                      color: Math.abs(corr) > 0.5 ? '#ffffff' : '#2c3e50',
+                      fontWeight: 'bold',
+                    }}>
+                      {corr.toFixed(2)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </LinearGradient>
+    </View>
+  );
+};
+
+// Fonctions utilitaires
+function getCorrelationColor(corr: number): string {
+  const intensity = Math.abs(corr);
+  if (corr > 0) {
+    return `rgba(46, 125, 50, ${intensity})`;
   } else {
-    return "🚨 Very High Risk: Extreme risk levels. Consider portfolio rebalancing or risk reduction strategies.";
+    return `rgba(211, 47, 47, ${intensity})`;
   }
 }
 
-// Original charts (maintaining compatibility)
-export { EfficientFrontierChart, PortfolioWeightsChart, CapitalAllocationChart, CAPMAnalysisChart, CorrelationMatrixChart } from './Charts';
+function getRiskInterpretation(var95: number, volatility: number, sharpe: number): string {
+  if (var95 < 2 && volatility < 15 && sharpe > 1) {
+    return "✅ Faible Risque: Profil conservateur avec un excellent ratio risque-rendement. Idéal pour les investisseurs prudents.";
+  } else if (var95 < 5 && volatility < 25 && sharpe > 0.5) {
+    return "⚠️ Risque Modéré: Profil équilibré adapté à la plupart des investisseurs. Surveillance recommandée.";
+  } else if (var95 < 10 && volatility < 40) {
+    return "🔶 Risque Élevé: Niveaux de risque élevés nécessitant une surveillance attentive et une gestion des risques.";
+  } else {
+    return "🚨 Risque Très Élevé: Niveaux de risque extrêmes. Considérez un rééquilibrage du portefeuille ou des stratégies de réduction des risques.";
+  }
+}
 
 const styles = StyleSheet.create({
   chartContainer: {
@@ -639,6 +593,9 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     textAlign: 'center',
     marginBottom: 20,
+  },
+  chart: {
+    borderRadius: 16,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -727,10 +684,6 @@ const styles = StyleSheet.create({
     color: '#2c3e50',
     lineHeight: 20,
     marginBottom: 8,
-  },
-  interpretationHighlight: {
-    fontWeight: '700',
-    color: '#e74c3c',
   },
   dashboardContainer: {
     marginVertical: 8,
