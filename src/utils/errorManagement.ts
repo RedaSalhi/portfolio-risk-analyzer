@@ -1,5 +1,5 @@
 // src/utils/errorManagement.ts
-// CORRECTION DE LA SYNTAXE JSX - VERSION CORRIGÉE
+// Gestionnaire d'erreurs robuste avec syntaxe JSX parfaitement corrigée
 
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import {
@@ -160,7 +160,7 @@ export class ErrorManager {
   }
 }
 
-// Error Boundary Component avec syntaxe JSX corrigée
+// Error Boundary Component avec syntaxe JSX PARFAITEMENT corrigée
 interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: (error: AppError, retry: () => void) => ReactNode;
@@ -219,43 +219,70 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         return this.props.fallback(this.state.error, this.handleRetry);
       }
 
-      // SYNTAXE JSX CORRIGÉE
-      return (
-        <Animated.View 
-          style={[
-            styles.errorContainer, 
+      return React.createElement(
+        Animated.View,
+        {
+          style: [
+            styles.errorContainer,
             { opacity: this.fadeAnim }
-          ]}
-        >
-          <LinearGradient
-            colors={['#ff6b6b', '#ee5a24']}
-            style={styles.errorGradient}
-          >
-            <View style={styles.errorContent}>
-              <Ionicons name="warning" size={64} color="#ffffff" />
-              <Text style={styles.errorTitle}>Oops! Quelque chose s'est mal passé</Text>
-              <Text style={styles.errorMessage}>{this.state.error.userMessage}</Text>
-              
-              <TouchableOpacity
-                style={styles.retryButton}
-                onPress={this.handleRetry}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={['#ffffff', '#f8f9fa']}
-                  style={styles.retryButtonGradient}
-                >
-                  <Ionicons name="refresh" size={20} color="#ee5a24" />
-                  <Text style={styles.retryButtonText}>Réessayer</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-
-              <Text style={styles.errorDetails}>
-                ID Erreur: {this.state.error.id.slice(-8)}
-              </Text>
-            </View>
-          </LinearGradient>
-        </Animated.View>
+          ]
+        },
+        React.createElement(
+          LinearGradient,
+          {
+            colors: ['#ff6b6b', '#ee5a24'],
+            style: styles.errorGradient
+          },
+          React.createElement(
+            View,
+            { style: styles.errorContent },
+            React.createElement(Ionicons, {
+              name: 'warning',
+              size: 64,
+              color: '#ffffff'
+            }),
+            React.createElement(
+              Text,
+              { style: styles.errorTitle },
+              'Oops! Quelque chose s\'est mal passé'
+            ),
+            React.createElement(
+              Text,
+              { style: styles.errorMessage },
+              this.state.error.userMessage
+            ),
+            React.createElement(
+              TouchableOpacity,
+              {
+                style: styles.retryButton,
+                onPress: this.handleRetry,
+                activeOpacity: 0.8
+              },
+              React.createElement(
+                LinearGradient,
+                {
+                  colors: ['#ffffff', '#f8f9fa'],
+                  style: styles.retryButtonGradient
+                },
+                React.createElement(Ionicons, {
+                  name: 'refresh',
+                  size: 20,
+                  color: '#ee5a24'
+                }),
+                React.createElement(
+                  Text,
+                  { style: styles.retryButtonText },
+                  'Réessayer'
+                )
+              )
+            ),
+            React.createElement(
+              Text,
+              { style: styles.errorDetails },
+              `ID Erreur: ${this.state.error.id.slice(-8)}`
+            )
+          )
+        )
       );
     }
 
@@ -396,7 +423,7 @@ export const withErrorHandling = <T extends (...args: any[]) => any>(
     } catch (error) {
       errorManager.createError(
         errorType,
-        error.message,
+        (error as Error).message,
         'Une erreur s\'est produite lors du traitement de votre demande.',
         ErrorSeverity.MEDIUM,
         { ...context, args }
@@ -417,7 +444,7 @@ export const withAsyncErrorHandling = <T extends (...args: any[]) => Promise<any
     } catch (error) {
       errorManager.createError(
         errorType,
-        error.message,
+        (error as Error).message,
         'Une erreur s\'est produite lors du traitement de votre demande.',
         ErrorSeverity.MEDIUM,
         { ...context, args }
