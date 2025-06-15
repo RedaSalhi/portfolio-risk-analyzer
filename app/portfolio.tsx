@@ -259,7 +259,10 @@ export default function BeautifulPortfolioOptimizer() {
       // Step 5: Run optimization
       setOptimizationProgress(80);
       animateProgress(0.8);
-      const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate);
+      const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate, {
+        allowShortSelling,
+        maxPositionSize,
+      });
       
       let optimizationResult;
       console.log(`🎯 Running ${optimizationMethod} optimization with ${monteCarloSimulations.toLocaleString()} simulations...`);
