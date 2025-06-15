@@ -1155,10 +1155,32 @@ export class PortfolioOptimizer {
       
       const derivative = numerator / portfolioVolatility;
       return isFinite(derivative) ? derivative : 0;
-      
+
     } catch (error) {
       console.warn(`Volatility derivative calculation failed for asset ${assetIndex}:`, error.message);
       return 0;
+    }
+  }
+
+  /**
+   * NEW: Calculate volatility derivatives for all assets
+   */
+  calculateAllVolatilityDerivatives(weights) {
+    try {
+      if (!Array.isArray(weights) || weights.length !== this.numAssets) {
+        throw new Error('Invalid weights array');
+      }
+
+      const derivatives = [];
+      for (let i = 0; i < this.numAssets; i++) {
+        derivatives.push(this.calculateVolatilityDerivative(weights, i));
+      }
+
+      return derivatives;
+
+    } catch (error) {
+      console.warn('All volatility derivatives calculation failed:', error.message);
+      return Array(this.numAssets).fill(0);
     }
   }
 
