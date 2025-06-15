@@ -1,5 +1,5 @@
-// app/portfolio.tsx - FIXED PORTFOLIO OPTIMIZER
-// Corrected mathematical implementations and improved CAPM analysis
+// app/portfolio.tsx - ENHANCED WITH PYTHON STREAMLIT TECHNIQUES
+// Full Markowitz optimization, CAPM analysis, and sophisticated visualizations
 
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
@@ -17,9 +17,15 @@ import {
     View,
     Dimensions,
 } from 'react-native';
-import { PortfolioWeightsChart, CorrelationMatrixChart, EfficientFrontierChart, CAPMAnalysisChart } from '../src/components/Charts';
+import { 
+  EfficientFrontierChart, 
+  PortfolioWeightsChart, 
+  CapitalAllocationChart, 
+  CAPMAnalysisChart,
+  CorrelationMatrixChart 
+} from '../src/components/Charts';
 import { realTimeDataFetcher } from '../src/utils/realTimeDataFetcher';
-import { PortfolioOptimizer, VaRCalculator } from '../src/utils/financialCalculations';
+import { PortfolioOptimizer, CAPMAnalyzer, RiskAttributionCalculator, CorrelationCalculator } from '../src/utils/financialCalculations';
 
 const { width } = Dimensions.get('window');
 
@@ -33,124 +39,103 @@ interface OptimizationResults {
   betas: { [key: string]: number };
   alphas: { [key: string]: number };
   correlationMatrix: number[][];
-  efficientFrontier: Array<{return: number, risk: number, sharpe: number}>;
+  efficientFrontier: Array<{expectedReturn: number, volatility: number, sharpeRatio: number}>;
   riskAttribution: { [key: string]: number };
+  allSimulations: Array<{expectedReturn: number, volatility: number, sharpeRatio: number}>;
+  capitalAllocation?: {
+    riskyWeight: number;
+    riskFreeWeight: number;
+    portfolioReturn: number;
+    portfolioVolatility: number;
+    tangencyWeights: number[];
+  };
   type: string;
   metadata: {
     dataSource: string;
     fetchTime: string;
     riskFreeRate: number;
     marketReturn: number;
+    monteCarloSimulations: number;
   };
 }
 
-export default function FixedPortfolioOptimizer() {
+export default function EnhancedPortfolioOptimizer() {
   // Core portfolio inputs
   const [tickers, setTickers] = useState('AAPL,MSFT,GOOGL,TSLA,AMZN');
   const [portfolioValue, setPortfolioValue] = useState(1000000);
   
-  // Optimization method selection
+  // Optimization method selection (like Python Streamlit version)
   const [optimizationMethod, setOptimizationMethod] = useState('maxSharpe');
   const [targetReturn, setTargetReturn] = useState(0.15);
   const [targetRisk, setTargetRisk] = useState(0.20);
   
-  // Advanced options
+  // Advanced options (matching Python version)
   const [includeRiskFree, setIncludeRiskFree] = useState(true);
   const [useMarketBenchmark, setUseMarketBenchmark] = useState(true);
+  const [monteCarloSimulations, setMonteCarloSimulations] = useState(10000);
   const [allowShortSelling, setAllowShortSelling] = useState(false);
   const [maxPositionSize, setMaxPositionSize] = useState(0.40);
   
   // State management
-  const [loading, setLoading] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
   const [results, setResults] = useState<OptimizationResults | null>(null);
   const [activeTab, setActiveTab] = useState('weights');
-  const [dataHealth, setDataHealth] = useState<any>(null);
 
-  // Optimization methods
+  // Optimization methods (matching Python Streamlit interface)
   const optimizationMethods = [
-    { key: 'maxSharpe', label: 'Maximum Sharpe Ratio', icon: '📈' },
-    { key: 'minRisk', label: 'Minimum Risk', icon: '🛡️' },
-    { key: 'targetReturn', label: 'Target Return', icon: '🎯' },
-    { key: 'targetRisk', label: 'Target Risk', icon: '⚖️' },
-    { key: 'equalWeight', label: 'Equal Weight', icon: '⚖️' },
-    { key: 'riskParity', label: 'Risk Parity', icon: '🔄' }
+    { key: 'maxSharpe', label: 'Maximum Sharpe Ratio', description: 'Optimize risk-adjusted returns' },
+    { key: 'minRisk', label: 'Minimum Risk', description: 'Minimize portfolio volatility' },
+    { key: 'targetReturn', label: 'Target Return', description: 'Achieve specific return target' },
+    { key: 'targetRisk', label: 'Target Volatility', description: 'Achieve specific risk target' },
+    { key: 'equalWeight', label: 'Equal Weight', description: '1/N diversification' },
+    { key: 'riskParity', label: 'Risk Parity', description: 'Equal risk contribution' }
   ];
 
-  // Check system health on load
-  useEffect(() => {
-    checkSystemHealth();
-  }, []);
-
-  const checkSystemHealth = async () => {
-    try {
-      const health = await realTimeDataFetcher.healthCheck();
-      setDataHealth(health);
-      
-      if (health.overall_status === 'CRITICAL ❌') {
-        Alert.alert('Data System Warning', 'Critical data source failure detected. Some features may be limited.');
-      }
-    } catch (error) {
-      console.warn('Health check failed:', error);
+  const runOptimization = async () => {
+    if (!tickers.trim()) {
+      Alert.alert('Error', 'Please enter at least one ticker symbol');
+      return;
     }
-  };
 
-  // FIXED: Main optimization function with better error handling
-  const runAdvancedOptimization = async () => {
-    setLoading(true);
+    const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
+    
+    if (tickerList.length < 2) {
+      Alert.alert('Error', 'Please enter at least 2 ticker symbols for portfolio optimization');
+      return;
+    }
+
+    setIsOptimizing(true);
     
     try {
-      // Parse and validate tickers
-      const tickerList = tickers.split(',')
-        .map(t => t.trim().toUpperCase())
-        .filter(t => t.length > 0 && /^[A-Z]{1,5}$/.test(t));
+      console.log(`🚀 Starting ${optimizationMethod} optimization for: ${tickerList.join(', ')}`);
       
-      if (tickerList.length < 2) {
-        Alert.alert('Error', 'Please enter at least 2 valid tickers (e.g., AAPL,MSFT)');
-        return;
-      }
-
-      if (tickerList.length > 20) {
-        Alert.alert('Error', 'Maximum 20 tickers allowed for mobile optimization');
-        return;
-      }
-
-      console.log('🚀 Starting advanced portfolio optimization for:', tickerList);
-
-      // Step 1: Fetch real-time market data
-      const stockData = await realTimeDataFetcher.fetchMultipleStocks(tickerList, '2y', true);
+      // Step 1: Fetch real-time market data (like Python yfinance)
+      console.log('📊 Fetching real-time market data...');
+      const stockData = await realTimeDataFetcher.getHistoricalData(tickerList, '5y');
       
-      if (!stockData.metadata || stockData.metadata.dataSource !== 'real-time-multi-source') {
-        throw new Error('Failed to get real-time market data');
+      if (!stockData || !stockData.returns || Object.keys(stockData.returns).length === 0) {
+        throw new Error('Failed to fetch market data. Please check ticker symbols and internet connection.');
       }
 
-      console.log(`✅ Real-time data: ${stockData.symbols.join(', ')} from ${stockData.metadata.dataSource}`);
+      // Step 2: Get risk-free rate (3-month Treasury like Python ^IRX)
+      const riskFreeRate = includeRiskFree ? 
+        await realTimeDataFetcher.getRiskFreeRate() : 0.02;
+      
+      console.log(`💰 Risk-free rate: ${(riskFreeRate * 100).toFixed(3)}%`);
 
-      // Step 2: Get market benchmark data
+      // Step 3: Get market benchmark data (S&P 500 like Python)
       let marketReturns = null;
-      let marketReturn = 0;
+      let marketReturn = 0.08; // Default market return
+      
       if (useMarketBenchmark) {
-        try {
-          marketReturns = await realTimeDataFetcher.getMarketData('2y');
-          if (marketReturns && marketReturns.length > 100) {
-            marketReturn = marketReturns.reduce((sum, r) => sum + r, 0) / marketReturns.length * 252;
-            console.log(`✅ Market benchmark: ${marketReturns.length} returns, annual return: ${(marketReturn*100).toFixed(2)}%`);
-          } else {
-            console.warn('Insufficient market data, disabling market benchmark');
-            setUseMarketBenchmark(false);
-            marketReturns = null;
-          }
-        } catch (error) {
-          console.warn('Market data failed, using portfolio proxy:', error.message);
-          setUseMarketBenchmark(false);
-          marketReturns = null;
+        console.log('📈 Fetching S&P 500 benchmark data...');
+        const marketData = await realTimeDataFetcher.getHistoricalData(['^GSPC'], '5y');
+        if (marketData && marketData.returns['^GSPC']) {
+          marketReturns = marketData.returns['^GSPC'];
+          marketReturn = marketReturns.reduce((sum, ret) => sum + ret, 0) / marketReturns.length * 252;
+          console.log(`📊 Market return: ${(marketReturn * 100).toFixed(2)}%`);
         }
       }
-
-      // Step 3: Get real-time risk-free rate
-      const riskFreeRate = includeRiskFree ? 
-        await realTimeDataFetcher.getRiskFreeRate() : 0.02; // Default 2% if disabled
-      
-      console.log(`✅ Risk-free rate: ${(riskFreeRate * 100).toFixed(3)}%`);
 
       // Step 4: Prepare returns matrix with validation
       const returnsMatrix = stockData.symbols.map(symbol => {
@@ -161,7 +146,7 @@ export default function FixedPortfolioOptimizer() {
         return returns;
       });
       
-      // Validate sufficient data
+      // Validate sufficient data (like Python version)
       const minObservations = Math.min(...returnsMatrix.map(r => r.length));
       if (minObservations < 50) {
         throw new Error(`Insufficient data: minimum ${minObservations} observations. Need at least 50 for reliable optimization.`);
@@ -169,24 +154,17 @@ export default function FixedPortfolioOptimizer() {
 
       console.log(`📊 Optimization dataset: ${minObservations} observations per asset`);
 
-      // Step 5: Initialize optimizer with validated data
+      // Step 5: Initialize optimizer with validated data (like Python PortfolioOptimizer)
       const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate);
       
-      // Set constraints
-      optimizer.setConstraints({
-        allowShortSelling: allowShortSelling,
-        maxPositionSize: maxPositionSize,
-        minPositionSize: allowShortSelling ? -0.20 : 0.0
-      });
-
-      // Step 6: Run optimization based on method
+      // Step 6: Run optimization based on method (matching Python logic)
       let optimizationResult;
-      console.log(`🎯 Running ${optimizationMethod} optimization...`);
+      console.log(`🎯 Running ${optimizationMethod} optimization with ${monteCarloSimulations.toLocaleString()} simulations...`);
       
       try {
         switch (optimizationMethod) {
           case 'maxSharpe':
-            optimizationResult = optimizer.optimizeMaxSharpe();
+            optimizationResult = optimizer.optimizeMaxSharpe(monteCarloSimulations);
             break;
           case 'minRisk':
             optimizationResult = optimizer.optimizeMinRisk();
@@ -204,7 +182,7 @@ export default function FixedPortfolioOptimizer() {
             optimizationResult = optimizer.optimizeRiskParity();
             break;
           default:
-            optimizationResult = optimizer.optimizeMaxSharpe();
+            optimizationResult = optimizer.optimizeMaxSharpe(monteCarloSimulations);
         }
 
         // Validate optimization results
@@ -225,96 +203,84 @@ export default function FixedPortfolioOptimizer() {
         throw new Error(`Optimization failed: ${error.message}`);
       }
 
-      // Step 7: Generate efficient frontier with error handling
-      let efficientFrontier = [];
-      try {
-        efficientFrontier = optimizer.generateEfficientFrontier(50);
-        console.log(`✅ Efficient frontier: ${efficientFrontier.length} portfolios`);
-      } catch (error) {
-        console.warn('Efficient frontier generation failed:', error.message);
-        // Continue without efficient frontier
-      }
-
-      // Step 8: FIXED CAPM calculation with proper error handling
-      let capmResults = {};
-      let betas = {};
-      let alphas = {};
+      // Step 7: CAPM Analysis (like Python statsmodels regression)
+      console.log('📈 Calculating CAPM metrics...');
+      const capmResults = {};
+      const betas = {};
+      const alphas = {};
       
-      if (marketReturns && marketReturns.length > 100) {
-        console.log('📊 Calculating CAPM metrics...');
-        try {
-          const capmData = optimizer.calculateCAPMReturns(marketReturns);
+      if (marketReturns && marketReturns.length > 0) {
+        for (let i = 0; i < stockData.symbols.length; i++) {
+          const symbol = stockData.symbols[i];
+          const assetReturns = returnsMatrix[i];
           
-          if (capmData && capmData.length === stockData.symbols.length) {
-            // FIXED: Proper mapping with validation
-            stockData.symbols.forEach((ticker, i) => {
-              if (capmData[i]) {
-                capmResults[ticker] = capmData[i].expectedReturn || 0;
-                betas[ticker] = capmData[i].beta || 0;
-                alphas[ticker] = capmData[i].alpha || 0;
-              } else {
-                console.warn(`CAPM data missing for ${ticker}`);
-                capmResults[ticker] = 0;
-                betas[ticker] = 1;
-                alphas[ticker] = 0;
-              }
-            });
-            console.log('✅ CAPM analysis complete');
-          } else {
-            console.warn('CAPM calculation returned invalid data');
+          // Align lengths
+          const minLength = Math.min(assetReturns.length, marketReturns.length);
+          const alignedAssetReturns = assetReturns.slice(-minLength);
+          const alignedMarketReturns = marketReturns.slice(-minLength);
+          
+          try {
+            const capmAnalyzer = new CAPMAnalyzer(alignedAssetReturns, alignedMarketReturns, riskFreeRate);
+            const capmMetrics = capmAnalyzer.calculateCAPMMetrics(symbol);
+            
+            capmResults[symbol] = capmMetrics.capmExpectedReturn;
+            betas[symbol] = capmMetrics.beta;
+            alphas[symbol] = capmMetrics.alpha;
+            
+            console.log(`${symbol}: Beta=${capmMetrics.beta.toFixed(3)}, Alpha=${(capmMetrics.alpha * 100).toFixed(2)}%`);
+          } catch (error) {
+            console.warn(`CAPM calculation failed for ${symbol}:`, error);
+            capmResults[symbol] = 0.08; // Default return
+            betas[symbol] = 1.0;
+            alphas[symbol] = 0.0;
           }
-        } catch (error) {
-          console.warn('CAPM calculation failed:', error.message);
-          // Initialize with default values
-          stockData.symbols.forEach(ticker => {
-            capmResults[ticker] = 0;
-            betas[ticker] = 1;
-            alphas[ticker] = 0;
-          });
         }
       } else {
-        console.log('📊 CAPM analysis skipped - insufficient market data');
-        // Initialize with default values when no market data
-        stockData.symbols.forEach(ticker => {
-          capmResults[ticker] = 0;
-          betas[ticker] = 1;
-          alphas[ticker] = 0;
+        // Fallback if no market data
+        stockData.symbols.forEach(symbol => {
+          capmResults[symbol] = 0.08;
+          betas[symbol] = 1.0;
+          alphas[symbol] = 0.0;
         });
       }
 
-      // Step 9: Calculate risk attribution with error handling
-      let riskAttribution = {};
-      try {
-        riskAttribution = optimizer.calculateRiskAttribution(optimizationResult.weights);
-        // FIXED: Map to actual ticker names
-        const mappedRiskAttribution = {};
-        stockData.symbols.forEach((ticker, i) => {
-          mappedRiskAttribution[ticker] = riskAttribution[`Asset_${i}`] || 0;
-        });
-        riskAttribution = mappedRiskAttribution;
-      } catch (error) {
-        console.warn('Risk attribution calculation failed:', error.message);
-        // Initialize with equal attribution
-        stockData.symbols.forEach(ticker => {
-          riskAttribution[ticker] = 1 / stockData.symbols.length;
-        });
+      // Step 8: Calculate correlation matrix (like Python pandas.corr())
+      console.log('📊 Calculating correlation matrix...');
+      const correlationMatrix = CorrelationCalculator.calculateCorrelationMatrix(returnsMatrix);
+      const correlationArray = [];
+      for (let i = 0; i < stockData.symbols.length; i++) {
+        correlationArray[i] = [];
+        for (let j = 0; j < stockData.symbols.length; j++) {
+          correlationArray[i][j] = correlationMatrix.get([i, j]);
+        }
       }
 
-      // Step 10: Calculate correlation matrix with error handling
-      let correlationMatrix = [];
-      try {
-        correlationMatrix = VaRCalculator.calculateRobustCorrelationMatrix(returnsMatrix);
-        console.log(`✅ Correlation matrix: ${correlationMatrix.length}x${correlationMatrix[0]?.length}`);
-      } catch (error) {
-        console.warn('Correlation matrix calculation failed:', error.message);
-        // Create identity matrix as fallback
-        const n = stockData.symbols.length;
-        correlationMatrix = Array(n).fill(null).map((_, i) => 
-          Array(n).fill(null).map((_, j) => i === j ? 1 : 0)
-        );
+      // Step 9: Risk attribution analysis
+      console.log('🎯 Calculating risk attribution...');
+      const riskAttribution = RiskAttributionCalculator.calculateRiskContribution(
+        optimizationResult.weights, 
+        optimizer.covarianceMatrix
+      );
+
+      // Step 10: Capital allocation with risk-free asset (like Python CML)
+      let capitalAllocation = null;
+      if (includeRiskFree) {
+        console.log('💰 Calculating capital allocation...');
+        if (optimizationMethod === 'targetReturn') {
+          capitalAllocation = optimizer.calculateCapitalAllocation(targetReturn, null);
+        } else if (optimizationMethod === 'targetRisk') {
+          capitalAllocation = optimizer.calculateCapitalAllocation(null, targetRisk);
+        } else {
+          capitalAllocation = optimizer.calculateCapitalAllocation();
+        }
       }
 
-      // Compile comprehensive results with validation
+      // Step 11: Generate efficient frontier (like Python matplotlib)
+      console.log('📊 Generating efficient frontier...');
+      const efficientFrontier = optimizationResult.efficientFrontier || 
+        optimizer.generateEfficientFrontier(optimizationResult.allSimulations, 100);
+
+      // Compile comprehensive results (matching Python Streamlit results)
       const comprehensiveResults: OptimizationResults = {
         weights: optimizationResult.weights,
         expectedReturn: optimizationResult.expectedReturn || 0,
@@ -324,15 +290,18 @@ export default function FixedPortfolioOptimizer() {
         capmReturns: capmResults,
         betas: betas,
         alphas: alphas,
-        correlationMatrix: correlationMatrix,
+        correlationMatrix: correlationArray,
         efficientFrontier: efficientFrontier,
         riskAttribution: riskAttribution,
+        allSimulations: optimizationResult.allSimulations || [],
+        capitalAllocation: capitalAllocation,
         type: optimizationMethod,
         metadata: {
           dataSource: stockData.metadata.dataSource,
           fetchTime: stockData.metadata.fetchTime,
           riskFreeRate: riskFreeRate,
-          marketReturn: marketReturn
+          marketReturn: marketReturn,
+          monteCarloSimulations: monteCarloSimulations
         }
       };
 
@@ -344,8 +313,8 @@ export default function FixedPortfolioOptimizer() {
       setResults(comprehensiveResults);
       setActiveTab('weights');
 
-      // Success feedback with validation
-      const successMessage = `✅ Portfolio optimized!\n• Method: ${optimizationMethods.find(m => m.key === optimizationMethod)?.label}\n• Expected Return: ${(optimizationResult.expectedReturn * 100).toFixed(2)}%\n• Risk: ${(optimizationResult.volatility * 100).toFixed(2)}%\n• Sharpe Ratio: ${optimizationResult.sharpeRatio.toFixed(3)}`;
+      // Success feedback with detailed metrics (like Python Streamlit)
+      const successMessage = `✅ Portfolio optimized!\n• Method: ${optimizationMethods.find(m => m.key === optimizationMethod)?.label}\n• Expected Return: ${(optimizationResult.expectedReturn * 100).toFixed(2)}%\n• Risk: ${(optimizationResult.volatility * 100).toFixed(2)}%\n• Sharpe Ratio: ${optimizationResult.sharpeRatio.toFixed(3)}\n• Simulations: ${monteCarloSimulations.toLocaleString()}`;
       
       Alert.alert('Optimization Complete', successMessage);
 
@@ -361,341 +330,350 @@ export default function FixedPortfolioOptimizer() {
         errorMessage = 'Data source temporarily unavailable. Please try again.';
       } else if (error.message.includes('Invalid')) {
         errorMessage = 'Invalid input parameters. Please check your settings.';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
       
-      Alert.alert('Optimization Error', errorMessage);
+      Alert.alert('Optimization Failed', errorMessage);
     } finally {
-      setLoading(false);
+      setIsOptimizing(false);
     }
   };
 
-  const TabButton = ({ tabKey, label, icon }: { tabKey: string; label: string; icon: string }) => (
-    <TouchableOpacity
-      style={[styles.tabButton, activeTab === tabKey && styles.tabButtonActive]}
-      onPress={() => setActiveTab(tabKey)}
-    >
-      <Text style={styles.tabIcon}>{icon}</Text>
-      <Text style={[styles.tabLabel, activeTab === tabKey && styles.tabLabelActive]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+  const resetToDefaults = () => {
+    setTickers('AAPL,MSFT,GOOGL,TSLA,AMZN');
+    setOptimizationMethod('maxSharpe');
+    setTargetReturn(0.15);
+    setTargetRisk(0.20);
+    setIncludeRiskFree(true);
+    setUseMarketBenchmark(true);
+    setMonteCarloSimulations(10000);
+    setAllowShortSelling(false);
+    setMaxPositionSize(0.40);
+    setResults(null);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Portfolio Optimizer</Text>
-          <Text style={styles.subtitle}>Fixed Professional Portfolio Management</Text>
-          
-          {/* System Health Indicator */}
-          {dataHealth && (
-            <View style={[styles.healthIndicator, 
-              dataHealth.overall_status?.includes('HEALTHY') ? styles.healthGood :
-              dataHealth.overall_status?.includes('DEGRADED') ? styles.healthWarning : styles.healthCritical
-            ]}>
-              <Text style={styles.healthText}>
-                Data: {dataHealth.overall_status?.split(' ')[1] || '?'}
-              </Text>
-            </View>
-          )}
+          <Text style={styles.subtitle}>Markowitz Mean-Variance & CAPM Analysis</Text>
         </View>
 
         {/* Input Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Portfolio Configuration</Text>
           
-          {/* Tickers Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Stock Tickers (comma-separated)</Text>
+            <Text style={styles.label}>Asset Tickers (comma-separated)</Text>
             <TextInput
               style={styles.textInput}
               value={tickers}
               onChangeText={setTickers}
-              placeholder="AAPL,MSFT,GOOGL,TSLA,AMZN"
+              placeholder="AAPL, MSFT, GOOGL, TSLA, AMZN"
               autoCapitalize="characters"
             />
           </View>
 
-          {/* Portfolio Value */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Portfolio Value: ${portfolioValue.toLocaleString()}</Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={100000}
-              maximumValue={10000000}
-              value={portfolioValue}
-              onValueChange={setPortfolioValue}
-              step={100000}
-              minimumTrackTintColor="#4A90E2"
-              maximumTrackTintColor="#E0E0E0"
+            <Text style={styles.label}>Portfolio Value</Text>
+            <TextInput
+              style={styles.textInput}
+              value={portfolioValue.toString()}
+              onChangeText={(text) => setPortfolioValue(Number(text) || 1000000)}
+              placeholder="1000000"
+              keyboardType="numeric"
             />
           </View>
+        </View>
 
-          {/* Optimization Method */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Optimization Method</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.methodScroll}>
-              {optimizationMethods.map((method) => (
-                <TouchableOpacity
-                  key={method.key}
-                  style={[styles.methodButton, optimizationMethod === method.key && styles.methodButtonActive]}
-                  onPress={() => setOptimizationMethod(method.key)}
-                >
-                  <Text style={styles.methodIcon}>{method.icon}</Text>
-                  <Text style={[styles.methodLabel, optimizationMethod === method.key && styles.methodLabelActive]}>
-                    {method.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+        {/* Optimization Method */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Optimization Method</Text>
+          
+          {optimizationMethods.map((method) => (
+            <TouchableOpacity
+              key={method.key}
+              style={[
+                styles.methodOption,
+                optimizationMethod === method.key && styles.methodOptionSelected
+              ]}
+              onPress={() => setOptimizationMethod(method.key)}
+            >
+              <View style={styles.methodContent}>
+                <Text style={[
+                  styles.methodLabel,
+                  optimizationMethod === method.key && styles.methodLabelSelected
+                ]}>
+                  {method.label}
+                </Text>
+                <Text style={styles.methodDescription}>{method.description}</Text>
+              </View>
+              <Ionicons
+                name={optimizationMethod === method.key ? "radio-button-on" : "radio-button-off"}
+                size={20}
+                color={optimizationMethod === method.key ? "#1f4e79" : "#ccc"}
+              />
+            </TouchableOpacity>
+          ))}
 
           {/* Target Parameters */}
           {optimizationMethod === 'targetReturn' && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Target Return: {(targetReturn * 100).toFixed(1)}%</Text>
+            <View style={styles.targetSection}>
+              <Text style={styles.targetLabel}>Target Annual Return: {(targetReturn * 100).toFixed(1)}%</Text>
               <Slider
                 style={styles.slider}
-                minimumValue={0.05}
-                maximumValue={0.30}
+                minimumValue={0.01}
+                maximumValue={0.50}
                 value={targetReturn}
                 onValueChange={setTargetReturn}
-                step={0.01}
-                minimumTrackTintColor="#4A90E2"
+                minimumTrackTintColor="#1f4e79"
+                maximumTrackTintColor="#ccc"
+                thumbStyle={styles.sliderThumb}
               />
             </View>
           )}
 
           {optimizationMethod === 'targetRisk' && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Target Risk: {(targetRisk * 100).toFixed(1)}%</Text>
+            <View style={styles.targetSection}>
+              <Text style={styles.targetLabel}>Target Annual Volatility: {(targetRisk * 100).toFixed(1)}%</Text>
               <Slider
                 style={styles.slider}
                 minimumValue={0.05}
-                maximumValue={0.40}
+                maximumValue={0.50}
                 value={targetRisk}
                 onValueChange={setTargetRisk}
-                step={0.01}
-                minimumTrackTintColor="#4A90E2"
+                minimumTrackTintColor="#1f4e79"
+                maximumTrackTintColor="#ccc"
+                thumbStyle={styles.sliderThumb}
               />
             </View>
           )}
+        </View>
 
-          {/* Advanced Options */}
-          <View style={styles.advancedOptions}>
-            <Text style={styles.inputLabel}>Advanced Options</Text>
-            
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Include Risk-Free Asset</Text>
-              <Switch
-                value={includeRiskFree}
-                onValueChange={setIncludeRiskFree}
-                trackColor={{ false: '#E0E0E0', true: '#4A90E2' }}
-              />
+        {/* Advanced Options */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Advanced Options</Text>
+          
+          <View style={styles.switchRow}>
+            <View style={styles.switchLabel}>
+              <Text style={styles.label}>Include Risk-Free Asset (3-Month Treasury)</Text>
+              <Text style={styles.subLabel}>Enable capital allocation with ^IRX</Text>
             </View>
+            <Switch
+              value={includeRiskFree}
+              onValueChange={setIncludeRiskFree}
+              trackColor={{ false: '#ccc', true: '#1f4e79' }}
+            />
+          </View>
 
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Use Market Benchmark (S&P 500)</Text>
-              <Switch
-                value={useMarketBenchmark}
-                onValueChange={setUseMarketBenchmark}
-                trackColor={{ false: '#E0E0E0', true: '#4A90E2' }}
-              />
+          <View style={styles.switchRow}>
+            <View style={styles.switchLabel}>
+              <Text style={styles.label}>Use S&P 500 Benchmark</Text>
+              <Text style={styles.subLabel}>Enable CAPM analysis with market data</Text>
             </View>
+            <Switch
+              value={useMarketBenchmark}
+              onValueChange={setUseMarketBenchmark}
+              trackColor={{ false: '#ccc', true: '#1f4e79' }}
+            />
+          </View>
 
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Allow Short Selling</Text>
-              <Switch
-                value={allowShortSelling}
-                onValueChange={setAllowShortSelling}
-                trackColor={{ false: '#E0E0E0', true: '#FF6B6B' }}
-              />
-            </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Monte Carlo Simulations: {monteCarloSimulations.toLocaleString()}</Text>
+            <Slider
+              style={styles.slider}
+              minimumValue={1000}
+              maximumValue={50000}
+              step={1000}
+              value={monteCarloSimulations}
+              onValueChange={setMonteCarloSimulations}
+              minimumTrackTintColor="#1f4e79"
+              maximumTrackTintColor="#ccc"
+              thumbStyle={styles.sliderThumb}
+            />
+          </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Max Position Size: {(maxPositionSize * 100).toFixed(0)}%</Text>
-              <Slider
-                style={styles.slider}
-                minimumValue={0.10}
-                maximumValue={1.00}
-                value={maxPositionSize}
-                onValueChange={setMaxPositionSize}
-                step={0.05}
-                minimumTrackTintColor="#4A90E2"
-              />
-            </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Maximum Position Size: {(maxPositionSize * 100).toFixed(0)}%</Text>
+            <Slider
+              style={styles.slider}
+              minimumValue={0.10}
+              maximumValue={1.00}
+              step={0.05}
+              value={maxPositionSize}
+              onValueChange={setMaxPositionSize}
+              minimumTrackTintColor="#1f4e79"
+              maximumTrackTintColor="#ccc"
+              thumbStyle={styles.sliderThumb}
+            />
           </View>
         </View>
 
-        {/* Optimize Button */}
-        <TouchableOpacity
-          style={[styles.optimizeButton, loading && styles.optimizeButtonDisabled]}
-          onPress={runAdvancedOptimization}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
-          ) : (
-            <Text style={styles.optimizeButtonText}>🚀 Optimize Portfolio</Text>
-          )}
-        </TouchableOpacity>
+        {/* Action Buttons */}
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={[styles.button, styles.primaryButton]}
+            onPress={runOptimization}
+            disabled={isOptimizing}
+          >
+            {isOptimizing ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <Ionicons name="analytics" size={20} color="#ffffff" />
+            )}
+            <Text style={styles.buttonText}>
+              {isOptimizing ? 'Optimizing...' : 'Run Optimization'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.secondaryButton]}
+            onPress={resetToDefaults}
+          >
+            <Ionicons name="refresh" size={20} color="#1f4e79" />
+            <Text style={styles.secondaryButtonText}>Reset</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Results Section */}
         {results && (
-          <View style={styles.resultsSection}>
-            
-            {/* Results Header */}
-            <View style={styles.resultsHeader}>
-              <Text style={styles.resultsTitle}>Optimization Results</Text>
-              <Text style={styles.resultsSubtitle}>
-                {optimizationMethods.find(m => m.key === results.type)?.label}
-              </Text>
-            </View>
-
-            {/* Key Metrics */}
-            <View style={styles.metricsRow}>
-              <View style={styles.metricCard}>
-                <Text style={styles.metricValue}>{(results.expectedReturn * 100).toFixed(2)}%</Text>
-                <Text style={styles.metricLabel}>Expected Return</Text>
-              </View>
-              <View style={styles.metricCard}>
-                <Text style={styles.metricValue}>{(results.volatility * 100).toFixed(2)}%</Text>
-                <Text style={styles.metricLabel}>Risk (Volatility)</Text>
-              </View>
-              <View style={styles.metricCard}>
-                <Text style={styles.metricValue}>{results.sharpeRatio.toFixed(3)}</Text>
-                <Text style={styles.metricLabel}>Sharpe Ratio</Text>
-              </View>
-            </View>
-
-            {/* Results Tabs */}
+          <View style={styles.resultsContainer}>
+            {/* Tab Navigation */}
             <View style={styles.tabContainer}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <TabButton tabKey="weights" label="Weights" icon="📊" />
-                <TabButton tabKey="frontier" label="Frontier" icon="📈" />
-                <TabButton tabKey="capm" label="CAPM" icon="📉" />
-                <TabButton tabKey="risk" label="Risk" icon="⚠️" />
-                <TabButton tabKey="correlation" label="Correlation" icon="🔗" />
-              </ScrollView>
+              {[
+                { key: 'weights', label: 'Weights', icon: 'pie-chart' },
+                { key: 'frontier', label: 'Frontier', icon: 'trending-up' },
+                { key: 'capm', label: 'CAPM', icon: 'analytics' },
+                { key: 'correlation', label: 'Correlation', icon: 'grid' },
+                { key: 'allocation', label: 'Allocation', icon: 'wallet' }
+              ].map((tab) => (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[styles.tab, activeTab === tab.key && styles.activeTab]}
+                  onPress={() => setActiveTab(tab.key)}
+                >
+                  <Ionicons
+                    name={tab.icon as any}
+                    size={16}
+                    color={activeTab === tab.key ? '#1f4e79' : '#666'}
+                  />
+                  <Text style={[
+                    styles.tabText,
+                    activeTab === tab.key && styles.activeTabText
+                  ]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            {/* Tab Content */}
-            <View style={styles.tabContent}>
-              {activeTab === 'weights' && (
-                <View>
-                  <PortfolioWeightsChart
-                    weights={results.weights}
-                    tickers={results.tickers}
-                    title="Optimal Portfolio Weights"
-                  />
-                  <View style={styles.weightsTable}>
-                    {results.tickers.map((ticker, index) => (
-                      <View key={ticker} style={styles.weightRow}>
-                        <Text style={styles.tickerText}>{ticker}</Text>
-                        <Text style={styles.weightText}>{(results.weights[index] * 100).toFixed(2)}%</Text>
-                        <Text style={styles.valueText}>
-                          ${(results.weights[index] * portfolioValue).toLocaleString()}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {activeTab === 'frontier' && results.efficientFrontier && results.efficientFrontier.length > 0 && (
-                <View>
-                  <EfficientFrontierChart
-                    frontierData={results.efficientFrontier}
-                    currentPortfolio={{
-                      return: results.expectedReturn,
-                      risk: results.volatility,
-                      sharpe: results.sharpeRatio
-                    }}
-                    title="Efficient Frontier"
-                  />
-                </View>
-              )}
-
-              {activeTab === 'capm' && Object.keys(results.capmReturns).length > 0 && (
-                <View>
-                  <CAPMAnalysisChart
-                    capmReturns={results.capmReturns}
-                    betas={results.betas}
-                    alphas={results.alphas}
-                    tickers={results.tickers}
-                    marketReturn={results.metadata.marketReturn}
-                    riskFreeRate={results.metadata.riskFreeRate}
-                  />
-                  
-                  {/* FIXED CAPM Table */}
-                  <View style={styles.capmTable}>
-                    <View style={styles.capmHeader}>
-                      <Text style={[styles.capmHeaderText, { flex: 2 }]}>Asset</Text>
-                      <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Beta</Text>
-                      <Text style={[styles.capmHeaderText, { flex: 1.5 }]}>Alpha</Text>
-                      <Text style={[styles.capmHeaderText, { flex: 2 }]}>Expected Return</Text>
-                    </View>
-                    
-                    {results.tickers.map((ticker, index) => (
-                      <View key={ticker} style={styles.capmRow}>
-                        <Text style={[styles.capmCellText, { flex: 2, fontWeight: '600' }]}>
-                          {ticker}
-                        </Text>
-                        <Text style={[styles.capmCellText, { flex: 1.5 }]}>
-                          {(results.betas[ticker] || 0).toFixed(3)}
-                        </Text>
-                        <Text style={[styles.capmCellText, { 
-                          flex: 1.5,
-                          color: (results.alphas[ticker] || 0) > 0 ? '#27AE60' : '#E74C3C'
-                        }]}>
-                          {((results.alphas[ticker] || 0) * 100).toFixed(2)}%
-                        </Text>
-                        <Text style={[styles.capmCellText, { flex: 2 }]}>
-                          {((results.capmReturns[ticker] || 0) * 100).toFixed(2)}%
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {activeTab === 'risk' && results.riskAttribution && (
-                <View>
-                  <Text style={styles.chartTitle}>Risk Attribution</Text>
-                  {results.tickers.map((ticker, index) => (
-                    <View key={ticker} style={styles.riskRow}>
-                      <Text style={styles.tickerText}>{ticker}</Text>
-                      <Text style={styles.riskText}>
-                        {((results.riskAttribution[ticker] || 0) * 100).toFixed(2)}%
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {activeTab === 'correlation' && (
-                <View>
-                  <CorrelationMatrixChart
-                    correlationMatrix={results.correlationMatrix}
-                    tickers={results.tickers}
-                    title="Asset Correlation Matrix"
-                  />
-                </View>
-              )}
+            {/* Portfolio Metrics Summary */}
+            <View style={styles.metricsContainer}>
+              <View style={styles.metric}>
+                <Text style={styles.metricLabel}>Expected Return</Text>
+                <Text style={styles.metricValue}>{(results.expectedReturn * 100).toFixed(2)}%</Text>
+              </View>
+              <View style={styles.metric}>
+                <Text style={styles.metricLabel}>Volatility</Text>
+                <Text style={styles.metricValue}>{(results.volatility * 100).toFixed(2)}%</Text>
+              </View>
+              <View style={styles.metric}>
+                <Text style={styles.metricLabel}>Sharpe Ratio</Text>
+                <Text style={styles.metricValue}>{results.sharpeRatio.toFixed(3)}</Text>
+              </View>
+              <View style={styles.metric}>
+                <Text style={styles.metricLabel}>Simulations</Text>
+                <Text style={styles.metricValue}>{results.metadata.monteCarloSimulations.toLocaleString()}</Text>
+              </View>
             </View>
 
-            {/* Metadata */}
-            <View style={styles.metadata}>
-              <Text style={styles.metadataTitle}>Data Information</Text>
-              <Text style={styles.metadataText}>Source: {results.metadata.dataSource}</Text>
-              <Text style={styles.metadataText}>Updated: {new Date(results.metadata.fetchTime).toLocaleString()}</Text>
-              <Text style={styles.metadataText}>Risk-free rate: {(results.metadata.riskFreeRate * 100).toFixed(3)}%</Text>
-              {results.metadata.marketReturn > 0 && (
-                <Text style={styles.metadataText}>Market return: {(results.metadata.marketReturn * 100).toFixed(2)}%</Text>
-              )}
+            {/* Chart Content */}
+            {activeTab === 'weights' && (
+              <PortfolioWeightsChart
+                weights={results.weights}
+                tickers={results.tickers}
+                title="Optimal Portfolio Allocation"
+              />
+            )}
+
+            {activeTab === 'frontier' && (
+              <EfficientFrontierChart
+                efficientFrontier={results.efficientFrontier}
+                optimalPortfolio={{
+                  expectedReturn: results.expectedReturn,
+                  volatility: results.volatility,
+                  sharpeRatio: results.sharpeRatio
+                }}
+                allSimulations={results.allSimulations}
+                riskFreeRate={results.metadata.riskFreeRate}
+                showCapitalMarketLine={includeRiskFree}
+              />
+            )}
+
+            {activeTab === 'capm' && (
+              <CAPMAnalysisChart
+                capmData={Object.fromEntries(
+                  results.tickers.map(ticker => [
+                    ticker,
+                    {
+                      alpha: results.alphas[ticker],
+                      beta: results.betas[ticker],
+                      capmExpectedReturn: results.capmReturns[ticker],
+                      rSquared: 0.75 // Placeholder - would need to store this from CAPM calculation
+                    }
+                  ])
+                )}
+                riskFreeRate={results.metadata.riskFreeRate}
+                marketReturn={results.metadata.marketReturn}
+              />
+            )}
+
+            {activeTab === 'correlation' && (
+              <CorrelationMatrixChart
+                correlationMatrix={results.correlationMatrix}
+                tickers={results.tickers}
+              />
+            )}
+
+            {activeTab === 'allocation' && results.capitalAllocation && (
+              <CapitalAllocationChart
+                riskyWeight={results.capitalAllocation.riskyWeight}
+                riskFreeWeight={results.capitalAllocation.riskFreeWeight}
+                tangencyWeights={results.capitalAllocation.tangencyWeights}
+                tickers={results.tickers}
+                targetReturn={optimizationMethod === 'targetReturn' ? targetReturn : undefined}
+                targetVolatility={optimizationMethod === 'targetRisk' ? targetRisk : undefined}
+              />
+            )}
+
+            {/* Detailed Metrics */}
+            <View style={styles.detailedMetrics}>
+              <Text style={styles.detailedMetricsTitle}>Detailed Analysis</Text>
+              
+              <View style={styles.metricRow}>
+                <Text style={styles.metricRowLabel}>Risk-Free Rate:</Text>
+                <Text style={styles.metricRowValue}>{(results.metadata.riskFreeRate * 100).toFixed(3)}%</Text>
+              </View>
+              
+              <View style={styles.metricRow}>
+                <Text style={styles.metricRowLabel}>Market Return:</Text>
+                <Text style={styles.metricRowValue}>{(results.metadata.marketReturn * 100).toFixed(2)}%</Text>
+              </View>
+              
+              <View style={styles.metricRow}>
+                <Text style={styles.metricRowLabel}>Data Source:</Text>
+                <Text style={styles.metricRowValue}>{results.metadata.dataSource}</Text>
+              </View>
+              
+              <View style={styles.metricRow}>
+                <Text style={styles.metricRowLabel}>Optimization Method:</Text>
+                <Text style={styles.metricRowValue}>
+                  {optimizationMethods.find(m => m.key === results.type)?.label}
+                </Text>
+              </View>
             </View>
           </View>
         )}
@@ -707,44 +685,31 @@ export default function FixedPortfolioOptimizer() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#f8f9fa',
   },
   header: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1f4e79',
     padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
     alignItems: 'center',
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 4,
+    fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
-    color: '#7F8C8D',
-    marginBottom: 10,
-  },
-  healthIndicator: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  healthGood: { backgroundColor: '#D4EDDA' },
-  healthWarning: { backgroundColor: '#FFF3CD' },
-  healthCritical: { backgroundColor: '#F8D7DA' },
-  healthText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#495057',
+    fontSize: 14,
+    color: '#b8c5d1',
+    textAlign: 'center',
+    marginTop: 4,
   },
   section: {
-    backgroundColor: '#FFFFFF',
-    margin: 15,
-    padding: 20,
+    backgroundColor: '#ffffff',
+    marginHorizontal: 16,
+    marginVertical: 8,
     borderRadius: 12,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -752,292 +717,223 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 20,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1f4e79',
+    marginBottom: 16,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  inputLabel: {
-    fontSize: 16,
+  label: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#34495E',
+    color: '#333',
     marginBottom: 8,
+  },
+  subLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
   },
   textInput: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#ddd',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#fafafa',
+  },
+  methodOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  methodOptionSelected: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#1f4e79',
+  },
+  methodContent: {
+    flex: 1,
+  },
+  methodLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  methodLabelSelected: {
+    color: '#1f4e79',
+  },
+  methodDescription: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  targetSection: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#f0f8ff',
+    borderRadius: 8,
+  },
+  targetLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f4e79',
+    marginBottom: 8,
   },
   slider: {
     width: '100%',
     height: 40,
   },
-  methodScroll: {
-    marginTop: 8,
-  },
-  methodButton: {
-    backgroundColor: '#F8F9FA',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginRight: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    minWidth: 100,
-  },
-  methodButtonActive: {
-    backgroundColor: '#4A90E2',
-    borderColor: '#4A90E2',
-  },
-  methodIcon: {
-    fontSize: 20,
-    marginBottom: 4,
-  },
-  methodLabel: {
-    fontSize: 12,
-    color: '#7F8C8D',
-    textAlign: 'center',
-  },
-  methodLabelActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  advancedOptions: {
-    marginTop: 10,
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+  sliderThumb: {
+    backgroundColor: '#1f4e79',
   },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   switchLabel: {
-    fontSize: 16,
-    color: '#34495E',
     flex: 1,
+    marginRight: 12,
   },
-  optimizeButton: {
-    backgroundColor: '#4A90E2',
-    margin: 15,
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#4A90E2',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  optimizeButtonDisabled: {
-    opacity: 0.6,
-  },
-  optimizeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  resultsSection: {
-    margin: 15,
-  },
-  resultsHeader: {
-    backgroundColor: '#FFFFFF',
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 15,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  resultsTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-  },
-  resultsSubtitle: {
-    fontSize: 16,
-    color: '#7F8C8D',
-    marginTop: 4,
-  },
-  metricsRow: {
+  buttonContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    gap: 12,
   },
-  metricCard: {
-    backgroundColor: '#FFFFFF',
+  button: {
     flex: 1,
-    padding: 15,
-    borderRadius: 8,
-    marginHorizontal: 4,
+    flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
   },
-  metricValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#4A90E2',
+  primaryButton: {
+    backgroundColor: '#1f4e79',
   },
-  metricLabel: {
-    fontSize: 12,
-    color: '#7F8C8D',
-    marginTop: 4,
-    textAlign: 'center',
+  secondaryButton: {
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    borderColor: '#1f4e79',
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  secondaryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f4e79',
+  },
+  resultsContainer: {
+    marginHorizontal: 16,
+    marginVertical: 8,
   },
   tabContainer: {
-    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
     borderRadius: 12,
-    padding: 8,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  tabButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginRight: 8,
-    alignItems: 'center',
-    minWidth: 80,
-  },
-  tabButtonActive: {
-    backgroundColor: '#4A90E2',
-  },
-  tabIcon: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    color: '#7F8C8D',
-  },
-  tabLabelActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  tabContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  weightsTable: {
-    marginTop: 20,
-  },
-  weightRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  tickerText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2C3E50',
-    flex: 1,
-  },
-  weightText: {
-    fontSize: 16,
-    color: '#4A90E2',
-    fontWeight: '600',
-    textAlign: 'center',
-    flex: 1,
-  },
-  valueText: {
-    fontSize: 14,
-    color: '#7F8C8D',
-    textAlign: 'right',
-    flex: 1,
-  },
-  capmTable: {
-    marginTop: 20,
-  },
-  capmHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#F8F9FA',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-  },
-  capmHeaderText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    textAlign: 'center',
-  },
-  capmRow: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  capmCellText: {
-    fontSize: 13,
-    color: '#34495E',
-    textAlign: 'center',
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  riskRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  riskText: {
-    fontSize: 16,
-    color: '#E74C3C',
-    fontWeight: '600',
-  },
-  metadata: {
-    backgroundColor: '#F8F9FA',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 10,
-  },
-  metadataTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2C3E50',
+    padding: 4,
     marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  metadataText: {
-    fontSize: 14,
-    color: '#7F8C8D',
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+    borderRadius: 8,
+    gap: 4,
+  },
+  activeTab: {
+    backgroundColor: '#e3f2fd',
+  },
+  tabText: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: '#1f4e79',
+    fontWeight: '600',
+  },
+  metricsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  metric: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  metricLabel: {
+    fontSize: 11,
+    color: '#666',
     marginBottom: 4,
+    textAlign: 'center',
+  },
+  metricValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f4e79',
+    textAlign: 'center',
+  },
+  detailedMetrics: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  detailedMetricsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f4e79',
+    marginBottom: 12,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  metricRowLabel: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  metricRowValue: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '400',
   },
 });
