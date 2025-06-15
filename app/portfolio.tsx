@@ -179,9 +179,13 @@ export default function BeautifulPortfolioOptimizer() {
     }).start();
   };
 
+
+
+
+  // 1. AJOUTER la fonction de validation (si pas encore ajoutée)
   const validatePortfolioInputs = () => {
     const errors = [];
-    
+  
     // Validate tickers
     const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
     if (tickerList.length < 2) {
@@ -190,44 +194,39 @@ export default function BeautifulPortfolioOptimizer() {
     if (tickerList.length > 10) {
       errors.push('Maximum 10 ticker symbols allowed for mobile optimization');
     }
-    
+  
     // Validate ticker format
     const invalidTickers = tickerList.filter(t => !/^[A-Z^]{1,6}$/.test(t));
     if (invalidTickers.length > 0) {
       errors.push(`Invalid ticker symbols: ${invalidTickers.join(', ')}`);
     }
-    
+  
     // Validate portfolio value
     if (portfolioValue < 1000 || portfolioValue > 100000000) {
       errors.push('Portfolio value must be between $1,000 and $100,000,000');
     }
-    
+  
     // Validate target return (if using targetReturn method)
     if (optimizationMethod === 'targetReturn' && (targetReturn < 0.01 || targetReturn > 1.0)) {
       errors.push('Target return must be between 1% and 100%');
     }
-    
+  
     // Validate target risk (if using targetRisk method)
     if (optimizationMethod === 'targetRisk' && (targetRisk < 0.01 || targetRisk > 1.0)) {
       errors.push('Target risk must be between 1% and 100%');
     }
-    
+  
     // Validate Monte Carlo simulations
     if (monteCarloSimulations < 100 || monteCarloSimulations > 100000) {
       errors.push('Monte Carlo simulations must be between 100 and 100,000');
     }
-    
-    // Validate max position size
-    if (maxPositionSize < 0.05 || maxPositionSize > 1.0) {
-      errors.push('Maximum position size must be between 5% and 100%');
-    }
-    
+  
     return errors;
   };
-    
-  // 6. FIX: Enhanced error boundary for mathematical calculations
+
+  // 2. REMPLACER complètement votre fonction runOptimization existante par celle-ci :
   const runOptimization = async () => {
-    // Validate inputs first
+    // Step 0: Validate inputs first
     const validationErrors = validatePortfolioInputs();
     if (validationErrors.length > 0) {
       Alert.alert(
@@ -238,22 +237,27 @@ export default function BeautifulPortfolioOptimizer() {
       return;
     }
 
+    // Parse tickers after validation
+    const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
+
+    // Initialize optimization state
     setIsOptimizing(true);
     setOptimizationProgress(0);
     setResults(null);
     animateProgress(0);
   
-    
+    const startTime = Date.now();
+  
     try {
       console.log(`🚀 Starting ${optimizationMethod} optimization for: ${tickerList.join(', ')}`);
-      
+    
       // Step 1: Fetch real-time market data
       setOptimizationProgress(20);
       animateProgress(0.2);
       console.log('📊 Fetching real-time market data...');
-      
+    
       const stockData = await realTimeDataFetcher.getHistoricalData(tickerList, '5y');
-      
+    
       if (!stockData || !stockData.returns || Object.keys(stockData.returns).length === 0) {
         throw new Error('Failed to fetch market data. Please check ticker symbols and internet connection.');
       }
@@ -263,7 +267,7 @@ export default function BeautifulPortfolioOptimizer() {
       animateProgress(0.35);
       const riskFreeRate = includeRiskFree ? 
         await realTimeDataFetcher.getRiskFreeRate() : 0.02;
-      
+    
       console.log(`💰 Risk-free rate: ${(riskFreeRate * 100).toFixed(3)}%`);
 
       // Step 3: Get market benchmark data
@@ -271,7 +275,7 @@ export default function BeautifulPortfolioOptimizer() {
       animateProgress(0.5);
       let marketReturns = null;
       let marketReturn = 0.08;
-      
+    
       if (useMarketBenchmark) {
         console.log('📈 Fetching S&P 500 benchmark data...');
         try {
@@ -296,7 +300,7 @@ export default function BeautifulPortfolioOptimizer() {
         }
         return returns;
       });
-      
+    
       const minObservations = Math.min(...returnsMatrix.map(r => r.length));
       if (minObservations < 50) {
         throw new Error(`Insufficient data: minimum ${minObservations} observations. Need at least 50 for reliable optimization.`);
@@ -308,13 +312,19 @@ export default function BeautifulPortfolioOptimizer() {
       setOptimizationProgress(80);
       animateProgress(0.8);
       const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate);
-      
+    
       let optimizationResult;
       console.log(`🎯 Running ${optimizationMethod} optimization with ${monteCarloSimulations.toLocaleString()} simulations...`);
-      
+    
+      // Pass constraints to optimization methods that support them
+      const constraints = {
+        maxPositionSize: maxPositionSize,
+        allowShortSelling: allowShortSelling
+      };
+    
       switch (optimizationMethod) {
         case 'maxSharpe':
-          optimizationResult = optimizer.optimizeMaxSharpe(monteCarloSimulations);
+          optimizationResult = optimizer.optimizeMaxSharpe(monteCarloSimulations, constraints);
           break;
         case 'minRisk':
           optimizationResult = optimizer.optimizeMinRisk();
@@ -332,41 +342,48 @@ export default function BeautifulPortfolioOptimizer() {
           optimizationResult = optimizer.optimizeRiskParity();
           break;
         default:
-          optimizationResult = optimizer.optimizeMaxSharpe(monteCarloSimulations);
+          optimizationResult = optimizer.optimizeMaxSharpe(monteCarloSimulations, constraints);
       }
 
-      // Validate and normalize weights
+      // Step 6: Validate optimization results
       if (!optimizationResult.weights || optimizationResult.weights.length !== stockData.symbols.length) {
         throw new Error('Invalid optimization results: weights array mismatch');
       }
 
+      // Check for NaN or infinite weights
+      if (optimizationResult.weights.some(w => isNaN(w) || !isFinite(w))) {
+        throw new Error('Optimization produced invalid weights (NaN or infinite values)');
+      }
+
+      // Normalize weights if needed
+      const weightSum = optimizationResult.weights.reduce((sum, w) => sum + w, 0);
       if (Math.abs(weightSum - 1.0) > 0.05) {
         console.warn(`Warning: weights sum to ${weightSum.toFixed(3)}, normalizing...`);
         optimizationResult.weights = optimizationResult.weights.map(w => w / weightSum);
       }
 
-      // Step 6: Additional analysis
+      // Step 7: Additional analysis
       setOptimizationProgress(90);
       animateProgress(0.9);
-      
+    
       // CAPM Analysis
       const capmResults = {};
       const betas = {};
       const alphas = {};
-      
+    
       if (marketReturns && marketReturns.length > 0) {
         for (let i = 0; i < stockData.symbols.length; i++) {
           const symbol = stockData.symbols[i];
           const assetReturns = returnsMatrix[i];
-          
+        
           const minLength = Math.min(assetReturns.length, marketReturns.length);
           const alignedAssetReturns = assetReturns.slice(-minLength);
           const alignedMarketReturns = marketReturns.slice(-minLength);
-          
+         
           try {
             const capmAnalyzer = new CAPMAnalyzer(alignedAssetReturns, alignedMarketReturns, riskFreeRate);
             const capmMetrics = capmAnalyzer.calculateCAPMMetrics(symbol);
-            
+          
             capmResults[symbol] = capmMetrics.capmExpectedReturn;
             betas[symbol] = capmMetrics.beta;
             alphas[symbol] = capmMetrics.alpha;
@@ -376,7 +393,7 @@ export default function BeautifulPortfolioOptimizer() {
             betas[symbol] = 1.0;
             alphas[symbol] = 0.0;
           }
-        }
+        } 
       } else {
         stockData.symbols.forEach(symbol => {
           capmResults[symbol] = 0.08;
@@ -417,9 +434,11 @@ export default function BeautifulPortfolioOptimizer() {
       const efficientFrontier = optimizationResult.efficientFrontier || 
         optimizer.generateEfficientFrontier(optimizationResult.allSimulations, 100);
 
-      // Final progress
+      // Step 8: Final validation and results
       setOptimizationProgress(100);
       animateProgress(1);
+
+      const calculationTime = Date.now() - startTime;
 
       const comprehensiveResults: OptimizationResults = {
         weights: optimizationResult.weights,
@@ -443,16 +462,21 @@ export default function BeautifulPortfolioOptimizer() {
           marketReturn: marketReturn,
           monteCarloSimulations: monteCarloSimulations
         }
-      };
+      }; 
 
-      if (comprehensiveResults.weights.some(w => isNaN(w) || !isFinite(w))) {
-        throw new Error('Optimization produced invalid weights');
+      // Final validation of results
+      if (comprehensiveResults.expectedReturn < -1 || comprehensiveResults.expectedReturn > 2) {
+        console.warn(`Warning: extreme expected return: ${(comprehensiveResults.expectedReturn * 100).toFixed(2)}%`);
+      }
+    
+      if (comprehensiveResults.volatility < 0 || comprehensiveResults.volatility > 2) {
+        console.warn(`Warning: extreme volatility: ${(comprehensiveResults.volatility * 100).toFixed(2)}%`);
       }
 
       setResults(comprehensiveResults);
       setActiveTab('weights');
 
-      // Success animation and feedback
+      // Success animation
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1.2,
@@ -466,35 +490,9 @@ export default function BeautifulPortfolioOptimizer() {
         }),
       ]).start();
 
-      const successMessage = `✅ Portfolio optimized!\n• Method: ${optimizationMethods.find(m => m.key === optimizationMethod)?.label}\n• Expected Return: ${(optimizationResult.expectedReturn * 100).toFixed(2)}%\n• Risk: ${(optimizationResult.volatility * 100).toFixed(2)}%\n• Sharpe Ratio: ${optimizationResult.sharpeRatio.toFixed(3)}`;
-      
-      Alert.alert('🎉 Optimization Complete!', successMessage);
-
-      // ADD: Validation of optimization results
-      if (comprehensiveResults.weights.some(w => isNaN(w) || !isFinite(w))) {
-        throw new Error('Optimization produced invalid weights (NaN or infinite values)');
-      }
-    
-      const weightSum = comprehensiveResults.weights.reduce((sum, w) => sum + w, 0);
-      if (Math.abs(weightSum - 1.0) > 0.01) {
-        console.warn(`Warning: weights sum to ${weightSum.toFixed(6)}, normalizing...`);
-        comprehensiveResults.weights = comprehensiveResults.weights.map(w => w / weightSum);
-      }
-    
-      // Validate expected return and volatility are reasonable
-      if (comprehensiveResults.expectedReturn < -1 || comprehensiveResults.expectedReturn > 2) {
-        console.warn(`Warning: extreme expected return: ${(comprehensiveResults.expectedReturn * 100).toFixed(2)}%`);
-      }
-    
-      if (comprehensiveResults.volatility < 0 || comprehensiveResults.volatility > 2) {
-        console.warn(`Warning: extreme volatility: ${(comprehensiveResults.volatility * 100).toFixed(2)}%`);
-      }
-
-      setResults(comprehensiveResults);
-      setActiveTab('weights');
-
       // Enhanced success message
-      const successMessage = `✅ Portfolio Optimized!\n• Method: ${optimizationMethods.find(m => m.key === optimizationMethod)?.label}\n• Expected Return: ${(comprehensiveResults.expectedReturn * 100).toFixed(2)}%\n• Risk: ${(comprehensiveResults.volatility * 100).toFixed(2)}%\n• Sharpe Ratio: ${comprehensiveResults.sharpeRatio.toFixed(3)}\n• Max Position: ${(Math.max(...comprehensiveResults.weights) * 100).toFixed(1)}%`;
+      const maxPosition = Math.max(...comprehensiveResults.weights);
+      const successMessage = `✅ Portfolio Optimized!\n• Method: ${optimizationMethods.find(m => m.key === optimizationMethod)?.label}\n• Expected Return: ${(comprehensiveResults.expectedReturn * 100).toFixed(2)}%\n• Risk: ${(comprehensiveResults.volatility * 100).toFixed(2)}%\n• Sharpe Ratio: ${comprehensiveResults.sharpeRatio.toFixed(3)}\n• Max Position: ${(maxPosition * 100).toFixed(1)}%\n• Calculation Time: ${calculationTime}ms`;
     
       Alert.alert('🎉 Optimization Complete!', successMessage);
 
@@ -505,7 +503,10 @@ export default function BeautifulPortfolioOptimizer() {
       let errorTitle = '❌ Optimization Failed';
       let errorMessage = 'Portfolio optimization encountered an error.';
     
-      if (error.message.includes('singular') || error.message.includes('invert')) {
+      if (error.message.includes('real-time')) {
+        errorTitle = '🌐 Data Connection Issue';
+        errorMessage = 'Unable to fetch real-time market data. Please check your internet connection and try again.';
+      } else if (error.message.includes('singular') || error.message.includes('invert')) {
         errorTitle = '📊 Matrix Calculation Error';
         errorMessage = 'The covariance matrix is singular (non-invertible). This usually happens when assets are perfectly correlated. Try using different assets or a longer time period.';
       } else if (error.message.includes('sufficient') || error.message.includes('Insufficient')) {
@@ -514,18 +515,23 @@ export default function BeautifulPortfolioOptimizer() {
       } else if (error.message.includes('invalid weights')) {
         errorTitle = '🧮 Calculation Error';
         errorMessage = 'The optimization produced invalid results. This may be due to extreme market conditions in your data. Try adjusting the time period or optimization method.';
+      } else if (error.message.includes('Target Return') || error.message.includes('Target Risk')) {
+        errorTitle = '🎯 Target Not Achievable';
+        errorMessage = 'The target return/risk you specified cannot be achieved with the selected assets. Try adjusting your target or using different assets.';
       } else if (error.message) {
         errorMessage = error.message;
       }
     
       Alert.alert(errorTitle, errorMessage);
     } finally {
+      // Cleanup
       setIsOptimizing(false);
       setOptimizationProgress(0);
       animateProgress(0);
     }
-  };  
-
+  };    
+  
+    
   const resetToDefaults = () => {
     Animated.sequence([
       Animated.timing(fadeAnim, {
