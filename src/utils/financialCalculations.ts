@@ -573,22 +573,27 @@ export class RiskAttributionCalculator {
 
 // FIXED: Correlation Calculator
 export class CorrelationCalculator {
-  static calculateCorrelationMatrix(returnsMatrix: number[][]): Map<any, number> {
+  static calculateCorrelationMatrix(returnsMatrix: number[][]): number[][] {
     const n = returnsMatrix.length;
-    const correlationMap = new Map();
-    
+    const correlationMatrix: number[][] = Array.from({ length: n }, () =>
+      Array(n).fill(0)
+    );
+
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
         if (i === j) {
-          correlationMap.set([i, j], 1.0);
+          correlationMatrix[i][j] = 1.0;
         } else {
-          const corr = this.calculateCorrelation(returnsMatrix[i], returnsMatrix[j]);
-          correlationMap.set([i, j], corr);
+          const corr = this.calculateCorrelation(
+            returnsMatrix[i],
+            returnsMatrix[j]
+          );
+          correlationMatrix[i][j] = corr;
         }
       }
     }
-    
-    return correlationMap;
+
+    return correlationMatrix;
   }
   
   private static calculateCorrelation(arr1: number[], arr2: number[]): number {

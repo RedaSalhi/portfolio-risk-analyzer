@@ -1,6 +1,8 @@
-import { VaRCalculator, PortfolioOptimizer } from '../src/utils/financialCalculations.js';
-
-import { VaRCalculator, PortfolioOptimizer } from '../src/utils/financialCalculations.js';
+import {
+  VaRCalculator,
+  PortfolioOptimizer,
+  CorrelationCalculator
+} from '../src/utils/financialCalculations.js';
 
 describe('VaRCalculator - Edge Cases and Fixes', () => {
   // Test data generators
@@ -172,6 +174,20 @@ describe('VaRCalculator - Edge Cases and Fixes', () => {
       expect(cleaned.length).toBe(identicalData.length);
       expect(cleaned.every(x => x === 0.01)).toBe(true);
     });
+  });
+});
+
+describe('CorrelationCalculator', () => {
+  test('returns accessible 2D array', () => {
+    const r1 = [0.01, -0.02, 0.03];
+    const r2 = [0.02, -0.01, 0.04];
+    const matrix = CorrelationCalculator.calculateCorrelationMatrix([r1, r2]);
+
+    expect(Array.isArray(matrix)).toBe(true);
+    expect(matrix.length).toBe(2);
+    expect(matrix[0].length).toBe(2);
+    expect(matrix[0][0]).toBeCloseTo(1, 5);
+    expect(matrix[0][1]).toBeCloseTo(matrix[1][0], 5);
   });
 });
 
