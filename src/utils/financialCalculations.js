@@ -677,14 +677,11 @@ export class VaRCalculator {
  * FIXED Portfolio Optimizer without mathjs dependency
  */
 export class PortfolioOptimizer {
-  constructor(returnsMatrix, riskFreeRate = 0.02, options = {}) {
+  constructor(returnsMatrix, riskFreeRate = 0.02) {
     this.returnsMatrix = returnsMatrix;
     this.riskFreeRate = riskFreeRate;
     this.numAssets = returnsMatrix.length;
     this.numObservations = returnsMatrix[0].length;
-
-    this.allowShortSelling = options.allowShortSelling || false;
-    this.maxPositionSize = options.maxPositionSize || 1.0;
     
     this.meanReturns = this.calculateMeanReturns();
     this.covarianceMatrix = this.calculateCovarianceMatrix();
@@ -958,16 +955,9 @@ export class PortfolioOptimizer {
   }
 
   generateRandomWeights() {
-    let weights = [];
-    do {
-      weights = Array.from({ length: this.numAssets }, () => {
-        const r = Math.random();
-        return this.allowShortSelling ? r * 2 - 1 : r;
-      });
-      const sum = weights.reduce((acc, weight) => acc + weight, 0);
-      weights = weights.map(w => w / sum);
-    } while (weights.some(w => Math.abs(w) > this.maxPositionSize));
-    return weights;
+    const weights = Array.from({ length: this.numAssets }, () => Math.random());
+    const sum = weights.reduce((acc, weight) => acc + weight, 0);
+    return weights.map(weight => weight / sum);
   }
 
   calculateCapitalAllocation(targetReturn = null, targetVolatility = null) {
@@ -1067,29 +1057,16 @@ export class PortfolioOptimizer {
     const weightSum = weights.reduce((sum, w) => sum + w, 0);
     const hasNaN = weights.some(w => isNaN(w) || !isFinite(w));
     const hasNegative = weights.some(w => w < -tolerance);
-    const hasExcessive = weights.some(w => Math.abs(w) > this.maxPositionSize + tolerance);
 
     return {
-      isValid:
-        !hasNaN &&
-        Math.abs(weightSum - 1.0) < tolerance &&
-        (this.allowShortSelling || !hasNegative) &&
-        !hasExcessive,
+      isValid: !hasNaN && Math.abs(weightSum - 1.0) < tolerance && !hasNegative,
       weightSum,
       hasNaN,
       hasNegative,
-      hasExcessive,
       issues: [
         ...(hasNaN ? ['Contains NaN or infinite values'] : []),
-        ...(Math.abs(weightSum - 1.0) >= tolerance
-          ? [`Weights sum to ${weightSum.toFixed(6)}, not 1.0`]
-          : []),
-        ...(!this.allowShortSelling && hasNegative
-          ? ['Contains negative weights (short selling not allowed)']
-          : []),
-        ...(hasExcessive
-          ? [`Weight exceeds maximum position size (${this.maxPositionSize})`]
-          : [])
+        ...(Math.abs(weightSum - 1.0) >= tolerance ? [`Weights sum to ${weightSum.toFixed(6)}, not 1.0`] : []),
+        ...(hasNegative ? ['Contains negative weights (short selling not allowed)'] : [])
       ]
     };
   }
