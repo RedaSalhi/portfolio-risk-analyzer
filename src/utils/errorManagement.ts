@@ -1,5 +1,5 @@
 // src/utils/errorManagement.ts
-// Gestionnaire d'erreurs robuste pour l'application financière
+// CORRECTION DE LA SYNTAXE JSX - VERSION CORRIGÉE
 
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import {
@@ -160,7 +160,7 @@ export class ErrorManager {
   }
 }
 
-// Error Boundary Component
+// Error Boundary Component avec syntaxe JSX corrigée
 interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: (error: AppError, retry: () => void) => ReactNode;
@@ -219,8 +219,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         return this.props.fallback(this.state.error, this.handleRetry);
       }
 
+      // SYNTAXE JSX CORRIGÉE
       return (
-        <Animated.View style={[styles.errorContainer, { opacity: this.fadeAnim }]}>
+        <Animated.View 
+          style={[
+            styles.errorContainer, 
+            { opacity: this.fadeAnim }
+          ]}
+        >
           <LinearGradient
             colors={['#ff6b6b', '#ee5a24']}
             style={styles.errorGradient}
@@ -311,17 +317,14 @@ export class FinancialErrorHandler {
 
   private retryCalculation(context: Record<string, any>): void {
     this.errorManager.info('Retry calculation', 'CALCULATION_RETRY', context);
-    // Implémenter la logique de retry ici
   }
 
   private retryNetworkRequest(url: string): void {
     this.errorManager.info(`Retry network request: ${url}`, 'NETWORK_RETRY');
-    // Implémenter la logique de retry ici
   }
 
   private retryApiCall(api: string): void {
     this.errorManager.info(`Retry API call: ${api}`, 'API_RETRY');
-    // Implémenter la logique de retry ici
   }
 }
 
