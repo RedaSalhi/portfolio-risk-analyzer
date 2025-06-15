@@ -1,19 +1,9 @@
 {
   "name": "financial-risk-analyzer",
+  "main": "expo-router/entry",
+  "type": "module",
   "version": "1.0.0",
-  "description": "Application d'analyse de risque financier avec optimisation de portefeuille et calculs VaR",
-  "main": "node_modules/expo/AppEntry.js",
-  "keywords": [
-    "finance",
-    "portfolio",
-    "risk",
-    "var",
-    "optimization",
-    "react-native",
-    "expo"
-  ],
-  "author": "SALHI Reda <reda.salhi@centrale-med.fr>",
-  "license": "MIT",
+  "description": "Modern Portfolio Theory & Value-at-Risk Analysis Mobile App",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
@@ -40,11 +30,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
-    "@react-native-async-storage/async-storage": "1.25.0",
     "@react-native-community/slider": "4.5.6",
-    "@react-navigation/bottom-tabs": "^6.6.1",
-    "@react-navigation/native": "^6.1.18",
-    "@react-navigation/stack": "^6.4.1",
     "expo": "~53.0.11",
     "expo-constants": "~17.1.6",
     "expo-font": "~13.3.1",
@@ -73,9 +59,9 @@
     "@types/jest": "^29.5.13",
     "@types/react": "~19.0.10",
     "@types/react-native": "^0.73.0",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "eslint": "^9.25.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.0",
     "eslint-config-expo": "~9.2.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",
@@ -93,6 +79,7 @@
     ],
     "collectCoverageFrom": [
       "src/**/*.{js,jsx,ts,tsx}",
+      "app/**/*.{js,jsx,ts,tsx}",
       "!src/**/*.d.ts",
       "!src/**/*.test.{js,jsx,ts,tsx}",
       "!src/**/index.{js,jsx,ts,tsx}"
@@ -122,7 +109,9 @@
       "@typescript-eslint/no-explicit-any": "warn",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
-      "no-console": "off"
+      "no-console": "off",
+      "@typescript-eslint/ban-ts-comment": "warn",
+      "@typescript-eslint/no-empty-function": "warn"
     },
     "parser": "@typescript-eslint/parser",
     "parserOptions": {
@@ -131,13 +120,18 @@
       "ecmaFeatures": {
         "jsx": true
       }
+    },
+    "env": {
+      "react-native/react-native": true,
+      "jest": true,
+      "node": true
     }
   },
   "prettier": {
     "semi": true,
     "trailingComma": "es5",
     "singleQuote": true,
-    "printWidth": 80,
+    "printWidth": 100,
     "tabWidth": 2,
     "useTabs": false,
     "bracketSpacing": true,
@@ -150,6 +144,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
+    "scheme": "financial-analyzer",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -184,15 +179,33 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/username/financial-risk-analyzer.git"
+    "url": "https://github.com/redasalhi/financial-risk-analyzer.git"
   },
   "bugs": {
-    "url": "https://github.com/username/financial-risk-analyzer/issues"
+    "url": "https://github.com/redasalhi/financial-risk-analyzer/issues"
   },
-  "homepage": "https://github.com/username/financial-risk-analyzer#readme",
+  "homepage": "https://github.com/redasalhi/financial-risk-analyzer#readme",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
   },
-  "private": true
+  "private": true,
+  "keywords": [
+    "finance",
+    "portfolio-optimization",
+    "value-at-risk",
+    "react-native",
+    "expo",
+    "markowitz",
+    "capm",
+    "monte-carlo",
+    "financial-analysis",
+    "risk-management"
+  ],
+  "author": {
+    "name": "SALHI Reda",
+    "email": "reda.salhi@centrale-med.fr",
+    "url": "https://github.com/redasalhi"
+  },
+  "license": "MIT"
 }
