@@ -1,614 +1,407 @@
-// src/utils/realTimeDataFetcher.js - FIXED VERSION
-// Added missing methods and better error handling
+// Real-time data fetcher with actual Yahoo Finance and FRED integration
+// This replaces your existing realTimeDataFetcher.js
 
-class MobileRealTimeDataFetcher {
+class RealTimeDataFetcher {
   constructor() {
     this.cache = new Map();
-    this.maxCacheAge = 5 * 60 * 1000; // 5 minutes for mobile
+    this.maxCacheAge = 5 * 60 * 1000; // 5 minutes cache
     this.rateLimits = new Map();
     
-    // Mobile-optimized API configuration
-    this.config = {
-      timeout: 15000, // 15 seconds for mobile networks
-      retries: 2,
-      useProxy: true, // Handle CORS for web browsers
+    // Real API endpoints
+    this.endpoints = {
+      yahoo: 'https://query1.finance.yahoo.com/v8/finance/chart/',
+      fred: 'https://api.stlouisfed.org/fred/series/observations',
+      fredApiKey: 'YOUR_FRED_API_KEY', // Replace with your FRED API key
+      // Fallback proxy for CORS issues
+      proxy: 'https://api.allorigins.win/get?url='
     };
     
-    // API sources in priority order (free tiers first)
-    this.dataSources = [
-      { name: 'yahoo', priority: 1, rateLimit: 2000 }, // 2 second intervals
-      { name: 'mock', priority: 2, rateLimit: 0 }, // Fallback mock data
-    ];
-    
-    console.log('📱 Mobile real-time data fetcher initialized');
+    console.log('📊 Real-time data fetcher initialized with Yahoo Finance & FRED');
   }
 
-  // FIXED: Add the missing getHistoricalData method
-  async getHistoricalData(symbols, period = '1y') {
-    console.log(`📊 Getting historical data for: ${symbols.join(', ')}`);
+  // MAIN METHOD: Get historical data for portfolio optimization
+  async getHistoricalData(symbols, period = '2y') {
+    console.log(`📈 Fetching real data for: ${symbols.join(', ')}`);
     
     try {
-      const result = await this.fetchMultipleStocks(symbols, period, false);
-      console.log(`✅ Historical data fetched successfully`);
-      return result;
+      const stockData = await this.fetchYahooFinanceData(symbols, period);
+      
+      return {
+        symbols: stockData.symbols,
+        individual: stockData.individual,
+        returns: stockData.returns,
+        metadata: {
+          dataSource: 'Yahoo Finance (Real)',
+          fetchTime: new Date().toISOString(),
+          period: period,
+          symbols: symbols
+        }
+      };
     } catch (error) {
-      console.error('❌ Historical data fetch failed:', error.message);
-      
-      // Fallback to mock data for demo purposes
-      console.log('🎭 Falling back to mock data for demonstration...');
-      return this.generateMockPortfolioData(symbols, period);
+      console.error('❌ Real data fetch failed:', error.message);
+      console.log('🔄 Falling back to enhanced mock data...');
+      return this.generateEnhancedMockData(symbols, period);
     }
   }
 
-  // FIXED: Better fallback data generation
-  generateMockPortfolioData(symbols, period = '1y') {
-    console.log(`🎭 Generating mock data for: ${symbols.join(', ')}`);
-    
-    const days = this.getPeriodDays(period);
-    const individual = {};
-    const returns = {};
-    
-    symbols.forEach(symbol => {
-      const mockData = this.generateMockStockData(symbol, days);
-      individual[symbol] = mockData;
-      returns[symbol] = mockData.returns.map(r => r.return);
-    });
-    
-    return {
-      individual,
-      returns,
-      symbols,
-      metadata: {
-        requestedSymbols: symbols,
-        successfulSymbols: symbols,
-        failedSymbols: [],
-        fetchTime: new Date().toISOString(),
-        dataSource: 'mock-high-quality',
-        isMobile: true,
-        successRate: '100%',
-        note: 'Using high-quality mock data for demonstration'
-      }
+  // REAL Yahoo Finance data fetching
+  async fetchYahooFinanceData(symbols, period = '2y') {
+    const results = {
+      symbols: [],
+      individual: {},
+      returns: {}
     };
-  }
 
-  generateMockStockData(symbol, days) {
-    const prices = [];
-    const returns = [];
-    
-    // Base parameters for realistic stock behavior
-    const basePrice = 50 + Math.random() * 200; // $50-$250
-    const annualReturn = 0.05 + Math.random() * 0.15; // 5-20% annual return
-    const volatility = 0.15 + Math.random() * 0.25; // 15-40% annual volatility
-    const dailyReturn = annualReturn / 252;
-    const dailyVol = volatility / Math.sqrt(252);
-    
-    let currentPrice = basePrice;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    
-    for (let i = 0; i < days; i++) {
-      const date = new Date(startDate);
-      date.setDate(startDate.getDate() + i);
-      
-      // Generate realistic price movement
-      const randomShock = (Math.random() - 0.5) * 2; // -1 to 1
-      const dailyPriceReturn = dailyReturn + dailyVol * randomShock;
-      
-      // Add some market regime changes
-      let regimeShock = 0;
-      if (Math.random() < 0.02) { // 2% chance of regime change
-        regimeShock = (Math.random() - 0.5) * 0.1; // ±5% shock
-      }
-      
-      const totalReturn = dailyPriceReturn + regimeShock;
-      currentPrice *= (1 + totalReturn);
-      
-      // Ensure positive prices
-      currentPrice = Math.max(currentPrice, 1);
-      
-      prices.push({
-        date: new Date(date),
-        open: currentPrice * (0.995 + Math.random() * 0.01),
-        high: currentPrice * (1 + Math.random() * 0.02),
-        low: currentPrice * (1 - Math.random() * 0.02),
-        close: currentPrice,
-        volume: Math.floor(1000000 + Math.random() * 5000000)
-      });
-      
-      if (i > 0) {
-        const prevPrice = prices[i-1].close;
-        const returnValue = (currentPrice - prevPrice) / prevPrice;
-        returns.push({
-          date: new Date(date),
-          return: returnValue
-        });
-      }
-    }
-    
-    return {
-      symbol,
-      prices,
-      returns,
-      currentPrice: prices[prices.length - 1]?.close || 0,
-      metadata: {
-        start: prices[0]?.date,
-        end: prices[prices.length - 1]?.date,
-        count: prices.length,
-        source: 'mock',
-        isMock: true,
-        fetchTime: new Date().toISOString(),
-        isMobile: true,
-        basePrice,
-        annualReturn: annualReturn * 100,
-        volatility: volatility * 100
-      }
+    const periodMap = {
+      '1m': { range: '1mo', interval: '1d' },
+      '3m': { range: '3mo', interval: '1d' },
+      '6m': { range: '6mo', interval: '1d' },
+      '1y': { range: '1y', interval: '1d' },
+      '2y': { range: '2y', interval: '1d' },
+      '5y': { range: '5y', interval: '1d' },
+      'max': { range: 'max', interval: '1d' }
     };
-  }
 
-  /**
-   * FIXED: Better error handling and fallbacks
-   */
-  async fetchStockData(symbol, period = '1y', forceRefresh = false) {
-    const cacheKey = `${symbol}_${period}`;
-    
-    // Check cache first (mobile data conservation)
-    if (!forceRefresh && this.isCacheValid(cacheKey)) {
-      console.log(`📋 Using cached data for ${symbol}`);
-      return this.cache.get(cacheKey).data;
-    }
+    const { range, interval } = periodMap[period] || periodMap['2y'];
 
-    console.log(`📱 Fetching real-time data for ${symbol}...`);
-
-    // Try Yahoo Finance first
-    try {
-      const data = await this.fetchFromYahoo(symbol, period);
-      if (data && this.validateDataQuality(data, symbol)) {
-        console.log(`✅ Real-time data fetched from Yahoo for ${symbol}`);
-        this.cacheData(cacheKey, data);
-        return data;
-      }
-    } catch (error) {
-      console.warn(`⚠️ Yahoo Finance failed for ${symbol}:`, error.message);
-    }
-
-    // Fallback to mock data
-    console.log(`🎭 Using mock data for ${symbol}`);
-    const mockData = this.generateMockStockData(symbol, this.getPeriodDays(period));
-    this.cacheData(cacheKey, mockData);
-    return mockData;
-  }
-
-  /**
-   * IMPROVED: Yahoo Finance with better CORS handling
-   */
-  async fetchFromYahoo(symbol, period) {
-    const now = Math.floor(Date.now() / 1000);
-    const seconds = this.getPeriodSeconds(period);
-    const start = now - seconds;
-    
-    // Try different approaches for CORS
-    const approaches = [
-      // Direct API call (works in React Native)
-      () => this.directYahooFetch(symbol, start, now),
-      // Proxy approach (works in web browsers)
-      () => this.proxyYahooFetch(symbol, start, now),
-      // Alternative Yahoo endpoint
-      () => this.alternativeYahooFetch(symbol, period)
-    ];
-    
-    for (const approach of approaches) {
+    for (const symbol of symbols) {
       try {
-        const data = await approach();
-        if (data) return data;
+        console.log(`📊 Fetching ${symbol} from Yahoo Finance...`);
+        
+        // Yahoo Finance API endpoint
+        const url = `${this.endpoints.yahoo}${symbol}?range=${range}&interval=${interval}&includePrePost=false&events=div%2Csplit`;
+        
+        let response;
+        try {
+          // Try direct fetch first
+          response = await fetch(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          });
+        } catch (corsError) {
+          console.log(`🔄 CORS issue for ${symbol}, using proxy...`);
+          // Use proxy for CORS issues
+          const proxyUrl = `${this.endpoints.proxy}${encodeURIComponent(url)}`;
+          const proxyResponse = await fetch(proxyUrl);
+          const proxyData = await proxyResponse.json();
+          response = {
+            ok: true,
+            json: () => Promise.resolve(JSON.parse(proxyData.contents))
+          };
+        }
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+          throw new Error('Invalid Yahoo Finance response');
+        }
+
+        const result = data.chart.result[0];
+        const timestamps = result.timestamp;
+        const prices = result.indicators.quote[0];
+
+        if (!timestamps || !prices || !prices.close) {
+          throw new Error('Missing price data');
+        }
+
+        // Process the data
+        const priceData = [];
+        const returns = [];
+        
+        for (let i = 0; i < timestamps.length; i++) {
+          if (prices.close[i] !== null && prices.close[i] !== undefined) {
+            const date = new Date(timestamps[i] * 1000);
+            priceData.push({
+              date: date.toISOString().split('T')[0],
+              close: prices.close[i],
+              open: prices.open[i] || prices.close[i],
+              high: prices.high[i] || prices.close[i],
+              low: prices.low[i] || prices.close[i],
+              volume: prices.volume[i] || 0
+            });
+            
+            // Calculate returns
+            if (i > 0 && prices.close[i-1] !== null && prices.close[i-1] !== 0) {
+              const dailyReturn = (prices.close[i] - prices.close[i-1]) / prices.close[i-1];
+              if (!isNaN(dailyReturn) && isFinite(dailyReturn)) {
+                returns.push(dailyReturn);
+              }
+            }
+          }
+        }
+
+        if (priceData.length < 50) {
+          throw new Error(`Insufficient data: only ${priceData.length} valid observations`);
+        }
+
+        results.symbols.push(symbol);
+        results.individual[symbol] = priceData;
+        results.returns[symbol] = returns;
+
+        console.log(`✅ ${symbol}: ${priceData.length} prices, ${returns.length} returns`);
+        
+        // Rate limiting - wait between requests
+        await this.sleep(100);
+        
       } catch (error) {
-        console.warn('Yahoo approach failed:', error.message);
+        console.warn(`⚠️ Failed to fetch ${symbol}: ${error.message}`);
+        // Skip failed symbols but don't fail entire request
         continue;
       }
     }
-    
-    throw new Error('All Yahoo Finance approaches failed');
+
+    if (results.symbols.length === 0) {
+      throw new Error('No symbols could be fetched successfully');
+    }
+
+    console.log(`✅ Successfully fetched ${results.symbols.length}/${symbols.length} symbols`);
+    return results;
   }
 
-  async directYahooFetch(symbol, start, now) {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${start}&period2=${now}&interval=1d`;
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
-    
-    try {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; FinanceApp/1.0)',
-          'Accept': 'application/json',
-        }
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`Yahoo API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      return this.formatYahooData(symbol, data?.chart?.result?.[0]);
-      
-    } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
-    }
-  }
-
-  async proxyYahooFetch(symbol, start, now) {
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${start}&period2=${now}&interval=1d`;
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
-    
-    try {
-      const response = await fetch(proxyUrl, {
-        signal: controller.signal,
-        headers: { 'Accept': 'application/json' }
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`Proxy error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      return this.formatYahooData(symbol, data?.chart?.result?.[0]);
-      
-    } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
-    }
-  }
-
-  async alternativeYahooFetch(symbol, period) {
-    // Alternative Yahoo Finance endpoint
-    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price,summaryDetail,defaultKeyStatistics`;
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
-    
-    try {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`Alternative Yahoo API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // This gives us current price but not historical data
-      // So we'll generate some recent mock data based on current price
-      if (data?.quoteSummary?.result?.[0]?.price?.regularMarketPrice?.raw) {
-        const currentPrice = data.quoteSummary.result[0].price.regularMarketPrice.raw;
-        return this.generateRecentMockData(symbol, currentPrice, period);
-      }
-      
-      throw new Error('No price data in alternative response');
-      
-    } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
-    }
-  }
-
-  generateRecentMockData(symbol, currentPrice, period) {
-    const days = this.getPeriodDays(period);
-    const prices = [];
-    const returns = [];
-    
-    // Work backwards from current price
-    let price = currentPrice;
-    const dailyVol = 0.02; // 2% daily volatility
-    
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      
-      prices.unshift({
-        date: new Date(date),
-        open: price * (0.995 + Math.random() * 0.01),
-        high: price * (1 + Math.random() * 0.015),
-        low: price * (1 - Math.random() * 0.015),
-        close: price,
-        volume: Math.floor(1000000 + Math.random() * 3000000)
-      });
-      
-      // Move to previous day's price
-      const randomMove = (Math.random() - 0.5) * 2 * dailyVol;
-      price = price / (1 + randomMove);
-    }
-    
-    // Calculate returns
-    for (let i = 1; i < prices.length; i++) {
-      const returnValue = (prices[i].close - prices[i-1].close) / prices[i-1].close;
-      returns.push({
-        date: prices[i].date,
-        return: returnValue
-      });
-    }
-    
-    return {
-      symbol,
-      prices,
-      returns,
-      currentPrice,
-      metadata: {
-        start: prices[0]?.date,
-        end: prices[prices.length - 1]?.date,
-        count: prices.length,
-        source: 'yahoo-current-extrapolated',
-        isMock: false,
-        fetchTime: new Date().toISOString(),
-        isMobile: true,
-        note: 'Current price from Yahoo, historical data extrapolated'
-      }
-    };
-  }
-
-  /**
-   * FIXED: Enhanced multiple stocks fetching
-   */
-  async fetchMultipleStocks(symbols, period = '1y', forceRefresh = false) {
-    console.log(`📱 Fetching portfolio data for: ${symbols.join(', ')}`);
-    
-    if (!Array.isArray(symbols) || symbols.length === 0) {
-      throw new Error('Invalid symbols array provided');
-    }
-    
-    const validSymbols = symbols.filter(symbol => 
-      typeof symbol === 'string' && /^[A-Z^]{1,5}$/.test(symbol.trim())
-    ).map(s => s.trim().toUpperCase());
-    
-    if (validSymbols.length === 0) {
-      throw new Error('No valid symbols provided');
-    }
-    
-    const results = [];
-    const successfulSymbols = [];
-    const failedSymbols = [];
-    
-    // Fetch data for each symbol with delays
-    for (let i = 0; i < validSymbols.length; i++) {
-      const symbol = validSymbols[i];
-      
-      try {
-        // Add delay between requests
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
-        const data = await this.fetchStockData(symbol, period, forceRefresh);
-        
-        if (data && data.prices && data.prices.length > 10) {
-          results.push(data);
-          successfulSymbols.push(symbol);
-        } else {
-          throw new Error(`Insufficient data for ${symbol}`);
-        }
-        
-      } catch (error) {
-        console.error(`❌ Failed to fetch ${symbol}:`, error.message);
-        failedSymbols.push({ symbol, error: error.message });
-        
-        // Generate mock data as fallback
-        try {
-          const mockData = this.generateMockStockData(symbol, this.getPeriodDays(period));
-          results.push(mockData);
-          successfulSymbols.push(symbol);
-          console.log(`🎭 Using mock data fallback for ${symbol}`);
-        } catch (mockError) {
-          console.error(`❌ Mock data generation failed for ${symbol}:`, mockError.message);
-        }
-      }
-    }
-    
-    // Require at least one result
-    if (results.length === 0) {
-      throw new Error('Failed to fetch data for any symbols');
-    }
-
-    // Combine data
-    const individual = {};
-    const allReturns = {};
-    
-    results.forEach((data, index) => {
-      const symbol = successfulSymbols[index];
-      individual[symbol] = data;
-      allReturns[symbol] = data.returns.map(r => {
-        const returnValue = r.return;
-        return isNaN(returnValue) || !isFinite(returnValue) ? 0 : returnValue;
-      });
-    });
-
-    // Synchronize data lengths
-    this.validateDataSync(allReturns);
-
-    console.log(`✅ Portfolio data ready: ${successfulSymbols.join(', ')}`);
-    
-    return {
-      individual,
-      returns: allReturns,
-      symbols: successfulSymbols,
-      metadata: {
-        requestedSymbols: symbols,
-        successfulSymbols: successfulSymbols,
-        failedSymbols: failedSymbols,
-        fetchTime: new Date().toISOString(),
-        dataSource: 'real-time-multi-source',
-        isMobile: true,
-        successRate: (successfulSymbols.length / symbols.length * 100).toFixed(1) + '%'
-      }
-    };
-  }
-
-  /**
-   * FIXED: Enhanced risk-free rate fetching
-   */
+  // REAL FRED data for risk-free rate
   async getRiskFreeRate() {
-    console.log('📱 Fetching risk-free rate...');
-    
     try {
-      const data = await this.fetchStockData('^IRX', '1mo');
-      if (data && data.currentPrice > 0 && data.currentPrice < 20) {
-        const rate = data.currentPrice / 100;
-        console.log(`✅ Risk-free rate from ^IRX: ${(rate * 100).toFixed(3)}%`);
-        return rate;
+      console.log('📊 Fetching risk-free rate from FRED...');
+      
+      // 3-Month Treasury Bill Secondary Market Rate
+      const fredUrl = `${this.endpoints.fred}?series_id=TB3MS&api_key=${this.endpoints.fredApiKey}&file_type=json&limit=1&sort_order=desc`;
+      
+      let response;
+      try {
+        response = await fetch(fredUrl);
+      } catch (corsError) {
+        // Use proxy for CORS
+        const proxyUrl = `${this.endpoints.proxy}${encodeURIComponent(fredUrl)}`;
+        const proxyResponse = await fetch(proxyUrl);
+        const proxyData = await proxyResponse.json();
+        response = {
+          ok: true,
+          json: () => Promise.resolve(JSON.parse(proxyData.contents))
+        };
       }
-    } catch (error) {
-      console.warn('⚠️ ^IRX failed:', error.message);
-    }
 
-    // Fallback to reasonable estimate
-    const fallbackRate = 0.045; // 4.5%
-    console.log(`🎭 Using fallback risk-free rate: ${(fallbackRate * 100).toFixed(2)}%`);
-    return fallbackRate;
-  }
-
-  // Helper methods
-  getPeriodDays(period) {
-    const periods = {
-      '1mo': 30, '3mo': 90, '6mo': 180, 
-      '1y': 365, '2y': 730, '5y': 1825
-    };
-    return periods[period] || 365;
-  }
-
-  getPeriodSeconds(period) {
-    return this.getPeriodDays(period) * 24 * 60 * 60;
-  }
-
-  isCacheValid(key) {
-    const cached = this.cache.get(key);
-    return cached && (Date.now() - cached.timestamp) < this.maxCacheAge;
-  }
-
-  cacheData(key, data) {
-    this.cache.set(key, { data, timestamp: Date.now() });
-    if (this.cache.size > 50) {
-      const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
-    }
-  }
-
-  validateDataQuality(data, symbol) {
-    return data && 
-           data.prices && 
-           Array.isArray(data.prices) && 
-           data.prices.length > 10 &&
-           data.returns && 
-           Array.isArray(data.returns) && 
-           data.returns.length > 5;
-  }
-
-  validateDataSync(allReturns) {
-    const symbols = Object.keys(allReturns);
-    if (symbols.length < 2) return true;
-    
-    const lengths = symbols.map(symbol => allReturns[symbol].length);
-    const minLength = Math.min(...lengths);
-    
-    symbols.forEach(symbol => {
-      if (allReturns[symbol].length > minLength) {
-        allReturns[symbol] = allReturns[symbol].slice(-minLength);
-      }
-    });
-    
-    return true;
-  }
-
-  formatYahooData(symbol, result) {
-    if (!result || !result.timestamp || !result.indicators?.quote?.[0]) {
-      throw new Error('Invalid Yahoo Finance data structure');
-    }
-    
-    const { timestamp } = result;
-    const quote = result.indicators.quote[0];
-    
-    const prices = [];
-    const returns = [];
-    let prevClose = null;
-    
-    for (let i = 0; i < timestamp.length; i++) {
-      const price = quote.close[i];
-      if (price == null || isNaN(price) || price <= 0) continue;
-      
-      const date = new Date(timestamp[i] * 1000);
-      if (isNaN(date.getTime())) continue;
-      
-      prices.push({
-        date,
-        open: quote.open[i] || price,
-        high: quote.high[i] || price,
-        low: quote.low[i] || price,
-        close: price,
-        volume: quote.volume[i] || 0
-      });
-      
-      if (prevClose != null && prevClose > 0) {
-        const returnValue = (price - prevClose) / prevClose;
-        if (!isNaN(returnValue) && isFinite(returnValue) && Math.abs(returnValue) < 1) {
-          returns.push({ date, return: returnValue });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.observations && data.observations.length > 0) {
+          const rate = parseFloat(data.observations[0].value) / 100; // Convert percentage to decimal
+          console.log(`✅ Risk-free rate: ${(rate * 100).toFixed(3)}%`);
+          return rate;
         }
       }
-      prevClose = price;
+    } catch (error) {
+      console.warn('⚠️ FRED API failed, using default risk-free rate:', error.message);
     }
-
-    if (prices.length === 0) {
-      throw new Error('No valid price data found');
-    }
-
-    return {
-      symbol: symbol,
-      prices: prices,
-      returns: returns,
-      currentPrice: prices[prices.length - 1]?.close || 0,
-      metadata: {
-        start: prices[0]?.date,
-        end: prices[prices.length - 1]?.date,
-        count: prices.length,
-        source: 'yahoo',
-        isMock: false,
-        fetchTime: new Date().toISOString(),
-        isMobile: true
-      }
-    };
+    
+    // Fallback to current approximate 3-month Treasury rate
+    const defaultRate = 0.045; // 4.5%
+    console.log(`📊 Using default risk-free rate: ${(defaultRate * 100).toFixed(1)}%`);
+    return defaultRate;
   }
 
-  async healthCheck() {
-    console.log('📱 Running system health check...');
+  // Enhanced mock data generator (for when real APIs fail)
+  generateEnhancedMockData(symbols, period = '2y') {
+    console.log(`🎭 Generating enhanced mock data for: ${symbols.join(', ')}`);
     
+    const days = this.getPeriodDays(period);
     const results = {
-      dataSources: {},
-      overall_status: 'HEALTHY ✅',
-      timestamp: new Date().toISOString()
+      symbols: symbols,
+      individual: {},
+      returns: {},
+      metadata: {
+        dataSource: 'Enhanced Mock Data',
+        fetchTime: new Date().toISOString(),
+        period: period,
+        symbols: symbols
+      }
     };
+
+    // Real-world inspired parameters for major stocks
+    const stockProfiles = {
+      'AAPL': { basePrice: 180, volatility: 0.25, trend: 0.15, marketCap: 'large' },
+      'MSFT': { basePrice: 340, volatility: 0.22, trend: 0.12, marketCap: 'large' },
+      'GOOGL': { basePrice: 140, volatility: 0.28, trend: 0.10, marketCap: 'large' },
+      'TSLA': { basePrice: 200, volatility: 0.45, trend: 0.20, marketCap: 'large' },
+      'AMZN': { basePrice: 145, volatility: 0.30, trend: 0.14, marketCap: 'large' },
+      'NVDA': { basePrice: 450, volatility: 0.40, trend: 0.25, marketCap: 'large' },
+      'META': { basePrice: 300, volatility: 0.35, trend: 0.08, marketCap: 'large' },
+      'NFLX': { basePrice: 450, volatility: 0.38, trend: 0.06, marketCap: 'large' }
+    };
+
+    symbols.forEach(symbol => {
+      const profile = stockProfiles[symbol] || {
+        basePrice: 100 + Math.random() * 200,
+        volatility: 0.20 + Math.random() * 0.20,
+        trend: (Math.random() - 0.5) * 0.20,
+        marketCap: 'medium'
+      };
+
+      const { prices, returns } = this.generateRealisticStockData(days, profile);
+      
+      results.individual[symbol] = prices;
+      results.returns[symbol] = returns;
+    });
+
+    console.log(`✅ Generated enhanced mock data for ${symbols.length} symbols`);
+    return results;
+  }
+
+  generateRealisticStockData(days, profile) {
+    const prices = [];
+    const returns = [];
+    let currentPrice = profile.basePrice;
     
-    try {
-      await this.fetchStockData('AAPL', '1mo');
-      results.dataSources.yahoo = 'HEALTHY ✅';
-    } catch (error) {
-      results.dataSources.yahoo = 'DEGRADED - Using Mock Data ⚠️';
+    const baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() - days);
+
+    for (let i = 0; i < days; i++) {
+      const date = new Date(baseDate);
+      date.setDate(date.getDate() + i);
+
+      // Generate realistic daily return
+      const trendComponent = profile.trend / 252; // Annualized to daily
+      const randomComponent = this.generateNormalRandom() * profile.volatility / Math.sqrt(252);
+      
+      // Add market regime changes
+      const regimeShock = Math.random() < 0.02 ? this.generateNormalRandom() * 0.05 : 0;
+      
+      // Add day-of-week effects
+      const dayOfWeek = date.getDay();
+      const weekendEffect = (dayOfWeek === 1) ? -0.001 : (dayOfWeek === 5) ? 0.001 : 0;
+      
+      const dailyReturn = trendComponent + randomComponent + regimeShock + weekendEffect;
+      
+      // Apply return to price
+      currentPrice *= (1 + dailyReturn);
+      
+      // Ensure price doesn't go negative
+      currentPrice = Math.max(0.01, currentPrice);
+      
+      // Add some intraday price action
+      const open = currentPrice * (1 + this.generateNormalRandom() * 0.005);
+      const high = Math.max(open, currentPrice) * (1 + Math.random() * 0.01);
+      const low = Math.min(open, currentPrice) * (1 - Math.random() * 0.01);
+      const volume = Math.floor(1000000 + Math.random() * 5000000);
+
+      prices.push({
+        date: date.toISOString().split('T')[0],
+        open: Number(open.toFixed(2)),
+        high: Number(high.toFixed(2)),
+        low: Number(low.toFixed(2)),
+        close: Number(currentPrice.toFixed(2)),
+        volume: volume
+      });
+
+      if (i > 0) {
+        returns.push(dailyReturn);
+      }
+    }
+
+    return { prices, returns };
+  }
+
+  // Box-Muller transformation for normal random numbers
+  generateNormalRandom() {
+    if (this.spare !== undefined) {
+      const temp = this.spare;
+      delete this.spare;
+      return temp;
     }
     
-    results.dataSources.mock = 'HEALTHY ✅';
+    const u1 = Math.random();
+    const u2 = Math.random();
+    const mag = 0.5 * Math.log(u1);
+    const z0 = Math.sqrt(-2 * mag) * Math.cos(2 * Math.PI * u2);
+    const z1 = Math.sqrt(-2 * mag) * Math.sin(2 * Math.PI * u2);
+    
+    this.spare = z1;
+    return z0;
+  }
+
+  getPeriodDays(period) {
+    const periodDays = {
+      '1m': 22,
+      '3m': 66,
+      '6m': 132,
+      '1y': 252,
+      '2y': 504,
+      '5y': 1260,
+      'max': 2520
+    };
+    return periodDays[period] || 504;
+  }
+
+  async sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Method to test API connectivity
+  async testConnectivity() {
+    console.log('🔧 Testing API connectivity...');
+    
+    const tests = [
+      {
+        name: 'Yahoo Finance',
+        test: () => this.fetchYahooFinanceData(['AAPL'], '1m')
+      },
+      {
+        name: 'FRED',
+        test: () => this.getRiskFreeRate()
+      }
+    ];
+
+    const results = {};
+    
+    for (const test of tests) {
+      try {
+        await test.test();
+        results[test.name] = 'SUCCESS ✅';
+        console.log(`✅ ${test.name} API: Working`);
+      } catch (error) {
+        results[test.name] = `FAILED ❌: ${error.message}`;
+        console.log(`❌ ${test.name} API: Failed - ${error.message}`);
+      }
+    }
     
     return results;
+  }
+
+  // Get current market status
+  async getMarketStatus() {
+    try {
+      const response = await fetch(`${this.endpoints.yahoo}^GSPC?range=1d&interval=1m`);
+      const data = await response.json();
+      
+      if (data.chart && data.chart.result && data.chart.result[0]) {
+        const meta = data.chart.result[0].meta;
+        return {
+          isOpen: meta.currentTradingPeriod?.regular?.gmtoffset !== undefined,
+          timezone: meta.timezone,
+          currency: meta.currency,
+          exchangeName: meta.exchangeName
+        };
+      }
+    } catch (error) {
+      console.warn('Could not determine market status:', error.message);
+    }
+    
+    return {
+      isOpen: false,
+      timezone: 'America/New_York',
+      currency: 'USD',
+      exchangeName: 'NASDAQ'
+    };
   }
 }
 
 // Export singleton instance
-export const realTimeDataFetcher = new MobileRealTimeDataFetcher();
+export const realTimeDataFetcher = new RealTimeDataFetcher();
+
+// For testing in browser console
+if (typeof window !== 'undefined') {
+  window.realTimeDataFetcher = realTimeDataFetcher;
+}
