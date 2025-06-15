@@ -179,22 +179,24 @@ export default function BeautifulPortfolioOptimizer() {
     }).start();
   };
 
+  // 6. FIX: Enhanced error boundary for mathematical calculations
   const runOptimization = async () => {
-    if (!tickers.trim()) {
-      Alert.alert('Error', 'Please enter at least one ticker symbol');
-      return;
-    }
-
-    const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
-    
-    if (tickerList.length < 2) {
-      Alert.alert('Error', 'Please enter at least 2 ticker symbols for portfolio optimization');
+    // Validate inputs first
+    const validationErrors = validatePortfolioInputs();
+    if (validationErrors.length > 0) {
+      Alert.alert(
+        '⚠️ Input Validation Error',
+        validationErrors.join('\n\n'),
+        [{ text: 'OK', style: 'default' }]
+      );
       return;
     }
 
     setIsOptimizing(true);
     setOptimizationProgress(0);
+    setResults(null);
     animateProgress(0);
+  
     
     try {
       console.log(`🚀 Starting ${optimizationMethod} optimization for: ${tickerList.join(', ')}`);
@@ -423,25 +425,61 @@ export default function BeautifulPortfolioOptimizer() {
       
       Alert.alert('🎉 Optimization Complete!', successMessage);
 
+      // ADD: Validation of optimization results
+      if (comprehensiveResults.weights.some(w => isNaN(w) || !isFinite(w))) {
+        throw new Error('Optimization produced invalid weights (NaN or infinite values)');
+      }
+    
+      const weightSum = comprehensiveResults.weights.reduce((sum, w) => sum + w, 0);
+      if (Math.abs(weightSum - 1.0) > 0.01) {
+        console.warn(`Warning: weights sum to ${weightSum.toFixed(6)}, normalizing...`);
+        comprehensiveResults.weights = comprehensiveResults.weights.map(w => w / weightSum);
+      }
+    
+      // Validate expected return and volatility are reasonable
+      if (comprehensiveResults.expectedReturn < -1 || comprehensiveResults.expectedReturn > 2) {
+        console.warn(`Warning: extreme expected return: ${(comprehensiveResults.expectedReturn * 100).toFixed(2)}%`);
+      }
+    
+      if (comprehensiveResults.volatility < 0 || comprehensiveResults.volatility > 2) {
+        console.warn(`Warning: extreme volatility: ${(comprehensiveResults.volatility * 100).toFixed(2)}%`);
+      }
+
+      setResults(comprehensiveResults);
+      setActiveTab('weights');
+
+      // Enhanced success message
+      const successMessage = `✅ Portfolio Optimized!\n• Method: ${optimizationMethods.find(m => m.key === optimizationMethod)?.label}\n• Expected Return: ${(comprehensiveResults.expectedReturn * 100).toFixed(2)}%\n• Risk: ${(comprehensiveResults.volatility * 100).toFixed(2)}%\n• Sharpe Ratio: ${comprehensiveResults.sharpeRatio.toFixed(3)}\n• Max Position: ${(Math.max(...comprehensiveResults.weights) * 100).toFixed(1)}%`;
+    
+      Alert.alert('🎉 Optimization Complete!', successMessage);
+
     } catch (error) {
       console.error('❌ Optimization error:', error);
-      
-      let errorMessage = 'Portfolio optimization failed.';
-      if (error.message.includes('real-time')) {
-        errorMessage = 'Unable to fetch real-time market data. Using demo data instead.';
-      } else if (error.message.includes('insufficient') || error.message.includes('Insufficient')) {
-        errorMessage = 'Insufficient market data. Try with fewer assets or different time period.';
+    
+      // Enhanced error handling with specific messages
+      let errorTitle = '❌ Optimization Failed';
+      let errorMessage = 'Portfolio optimization encountered an error.';
+    
+      if (error.message.includes('singular') || error.message.includes('invert')) {
+        errorTitle = '📊 Matrix Calculation Error';
+        errorMessage = 'The covariance matrix is singular (non-invertible). This usually happens when assets are perfectly correlated. Try using different assets or a longer time period.';
+      } else if (error.message.includes('sufficient') || error.message.includes('Insufficient')) {
+        errorTitle = '📊 Data Quality Issue';
+        errorMessage = error.message + '\n\nTry using fewer assets or a different time period.';
+      } else if (error.message.includes('invalid weights')) {
+        errorTitle = '🧮 Calculation Error';
+        errorMessage = 'The optimization produced invalid results. This may be due to extreme market conditions in your data. Try adjusting the time period or optimization method.';
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
-      Alert.alert('❌ Optimization Failed', errorMessage);
+    
+      Alert.alert(errorTitle, errorMessage);
     } finally {
       setIsOptimizing(false);
       setOptimizationProgress(0);
       animateProgress(0);
     }
-  };
+  };  
 
   const resetToDefaults = () => {
     Animated.sequence([
