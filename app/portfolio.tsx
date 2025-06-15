@@ -185,7 +185,9 @@ export default function BeautifulPortfolioOptimizer() {
       return;
     }
 
-    const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
+    const tickerList = Array.from(new Set(
+      tickers.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
+    ));
     
     if (tickerList.length < 2) {
       Alert.alert('Error', 'Please enter at least 2 ticker symbols for portfolio optimization');
@@ -291,7 +293,7 @@ export default function BeautifulPortfolioOptimizer() {
       }
 
       // Validate and normalize weights
-      if (!optimizationResult.weights || optimizationResult.weights.length !== stockData.symbols.length) {
+      if (!optimizationResult.weights || optimizationResult.weights.length !== returnsMatrix.length) {
         throw new Error('Invalid optimization results: weights array mismatch');
       }
 
