@@ -1,12 +1,18 @@
-const { PortfolioOptimizer } = require('../src/utils/financialCalculations');
+let PortfolioOptimizer;
+let optimizer;
 
-describe('Target weight optimizations', () => {
+beforeAll(async () => {
+  ({ PortfolioOptimizer } = await import('../src/utils/financialCalculations.js'));
+
   const len = 260;
   const asset1 = Array.from({ length: len }, (_, i) => 0.0005 + 0.0001 * Math.sin(i));
   const asset2 = Array.from({ length: len }, (_, i) => 0.0008 + 0.00015 * Math.cos(i * 0.3));
   const asset3 = Array.from({ length: len }, (_, i) => 0.0003 + 0.00005 * Math.sin(i * 1.3));
 
-  const optimizer = new PortfolioOptimizer([asset1, asset2, asset3], 0.01);
+  optimizer = new PortfolioOptimizer([asset1, asset2, asset3], 0.01);
+});
+
+describe('Target weight optimizations', () => {
 
   test('calculateTargetReturnWeights hits target return', () => {
     const target = 0.15; // 15% annual return

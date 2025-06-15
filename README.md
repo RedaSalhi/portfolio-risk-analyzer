@@ -36,3 +36,11 @@ IEX_API_KEY=your_iex_cloud_key
 
 - [Expo documentation](https://docs.expo.dev/)
 - [Expo community Discord](https://chat.expo.dev)
+
+## Testing
+
+Run all Jest unit tests with:
+
+```bash
+npm test
+```
