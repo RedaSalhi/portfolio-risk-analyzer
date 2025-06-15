@@ -378,7 +378,7 @@ export const CorrelationMatrixChart: React.FC<Partial<CorrelationMatrixProps>> =
 
         <View style={styles.correlationLegend}>
           <Text style={styles.legendText}>
-            Strong: |r| > 0.7 • Moderate: 0.3-0.7 • Weak: |r| < 0.3
+            {"Strong: |r| > 0.7 • Moderate: 0.3–0.7 • Weak: |r| < 0.3"}
           </Text>
         </View>
       </LinearGradient>
