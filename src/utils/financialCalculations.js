@@ -1,5 +1,156 @@
 // src/utils/financialCalculations.js - FIXED VERSION
-// Corrected mathematical implementations and VaR calculations
+// Corrected for React Native compatibility without mathjs dependencies
+
+/**
+ * FIXED: Matrix operations without mathjs dependency
+ * React Native compatible implementation
+ */
+
+// Simple Matrix class for financial calculations
+class SimpleMatrix {
+  constructor(rows, cols, data = null) {
+    this.rows = rows;
+    this.cols = cols;
+    this.data = data || Array(rows).fill(null).map(() => Array(cols).fill(0));
+  }
+
+  get(row, col) {
+    if (Array.isArray(row)) {
+      // Handle [i, j] syntax like mathjs
+      return this.data[row[0]][row[1]];
+    }
+    return this.data[row][col];
+  }
+
+  set(row, col, value) {
+    if (Array.isArray(row)) {
+      // Handle [i, j] syntax like mathjs
+      this.data[row[0]][row[1]] = value;
+    } else {
+      this.data[row][col] = value;
+    }
+  }
+
+  static zeros(dims) {
+    if (Array.isArray(dims)) {
+      return new SimpleMatrix(dims[0], dims[1]);
+    }
+    return new SimpleMatrix(dims, dims);
+  }
+
+  static identity(size) {
+    const matrix = new SimpleMatrix(size, size);
+    for (let i = 0; i < size; i++) {
+      matrix.set(i, i, 1);
+    }
+    return matrix;
+  }
+
+  multiply(other) {
+    if (typeof other === 'number') {
+      // Scalar multiplication
+      const result = new SimpleMatrix(this.rows, this.cols);
+      for (let i = 0; i < this.rows; i++) {
+        for (let j = 0; j < this.cols; j++) {
+          result.set(i, j, this.get(i, j) * other);
+        }
+      }
+      return result;
+    }
+    
+    // Matrix multiplication
+    if (this.cols !== other.rows) {
+      throw new Error('Matrix dimensions incompatible for multiplication');
+    }
+    
+    const result = new SimpleMatrix(this.rows, other.cols);
+    for (let i = 0; i < this.rows; i++) {
+      for (let j = 0; j < other.cols; j++) {
+        let sum = 0;
+        for (let k = 0; k < this.cols; k++) {
+          sum += this.get(i, k) * other.get(k, j);
+        }
+        result.set(i, j, sum);
+      }
+    }
+    return result;
+  }
+
+  transpose() {
+    const result = new SimpleMatrix(this.cols, this.rows);
+    for (let i = 0; i < this.rows; i++) {
+      for (let j = 0; j < this.cols; j++) {
+        result.set(j, i, this.get(i, j));
+      }
+    }
+    return result;
+  }
+
+  inverse() {
+    if (this.rows !== this.cols) {
+      throw new Error('Matrix must be square for inversion');
+    }
+    
+    const n = this.rows;
+    const augmented = Array(n).fill(null).map(() => Array(2 * n).fill(0));
+    
+    // Create augmented matrix [A|I]
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        augmented[i][j] = this.get(i, j);
+        augmented[i][j + n] = i === j ? 1 : 0;
+      }
+    }
+    
+    // Gauss-Jordan elimination
+    for (let i = 0; i < n; i++) {
+      // Find pivot
+      let maxRow = i;
+      for (let k = i + 1; k < n; k++) {
+        if (Math.abs(augmented[k][i]) > Math.abs(augmented[maxRow][i])) {
+          maxRow = k;
+        }
+      }
+      
+      // Swap rows
+      [augmented[i], augmented[maxRow]] = [augmented[maxRow], augmented[i]];
+      
+      // Make diagonal element 1
+      const pivot = augmented[i][i];
+      if (Math.abs(pivot) < 1e-10) {
+        throw new Error('Matrix is singular and cannot be inverted');
+      }
+      
+      for (let j = 0; j < 2 * n; j++) {
+        augmented[i][j] /= pivot;
+      }
+      
+      // Eliminate column
+      for (let k = 0; k < n; k++) {
+        if (k !== i) {
+          const factor = augmented[k][i];
+          for (let j = 0; j < 2 * n; j++) {
+            augmented[k][j] -= factor * augmented[i][j];
+          }
+        }
+      }
+    }
+    
+    // Extract inverse matrix
+    const result = new SimpleMatrix(n, n);
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        result.set(i, j, augmented[i][j + n]);
+      }
+    }
+    
+    return result;
+  }
+
+  toArray() {
+    return this.data.map(row => [...row]);
+  }
+}
 
 /**
  * Improved normal distribution inverse using Beasley-Springer-Moro algorithm
@@ -9,7 +160,6 @@ function normalInverse(p) {
     throw new Error('Probability must be between 0 and 1');
   }
 
-  // Beasley-Springer-Moro algorithm
   const a = [
     -3.969683028665376e+01, 2.209460984245205e+02,
     -2.759285104469687e+02, 1.383577518672690e+02,
@@ -64,13 +214,10 @@ function boxMullerRandom() {
 }
 
 /**
- * FIXED VaR Calculator with proper per-asset and portfolio calculations
+ * FIXED VaR Calculator with proper matrix handling
  */
 export class VaRCalculator {
   
-  /**
-   * FIXED: Individual Asset Parametric VaR
-   */
   static calculateIndividualParametricVaR(assetReturns, ticker, confidenceLevel = 0.95, positionSize = 100000) {
     console.log(`🧮 Calculating Individual Parametric VaR for ${ticker}...`);
     
@@ -78,17 +225,14 @@ export class VaRCalculator {
       throw new Error(`Insufficient data for ${ticker}: Need at least 30 return observations`);
     }
 
-    // Clean data
     const cleanReturns = this.removeOutliers(assetReturns, 3);
     
-    // Calculate statistics
     const mean = this.calculateMean(cleanReturns);
     const variance = this.calculateVariance(cleanReturns, mean);
     const volatility = Math.sqrt(variance);
     const skewness = this.calculateSkewness(cleanReturns, mean, volatility);
     const kurtosis = this.calculateKurtosis(cleanReturns, mean, volatility);
 
-    // Cornish-Fisher VaR adjustment
     const alpha = 1 - confidenceLevel;
     const zScore = normalInverse(alpha);
     
@@ -98,11 +242,9 @@ export class VaRCalculator {
     
     const adjustedZScore = zScore + cfAdjustment;
     
-    // Calculate VaR (negative of the loss)
     const varPercent = -(mean + adjustedZScore * volatility);
     const varValue = Math.abs(varPercent * positionSize);
 
-    // Expected Shortfall (approximation)
     const phi_z = Math.exp(-0.5 * zScore * zScore) / Math.sqrt(2 * Math.PI);
     const expectedShortfall = Math.abs((mean + (phi_z / alpha) * volatility) * positionSize);
 
@@ -122,9 +264,6 @@ export class VaRCalculator {
     };
   }
 
-  /**
-   * FIXED: Individual Asset Historical VaR
-   */
   static calculateIndividualHistoricalVaR(assetReturns, ticker, confidenceLevel = 0.95, positionSize = 100000) {
     console.log(`📊 Calculating Individual Historical VaR for ${ticker}...`);
     
@@ -132,21 +271,15 @@ export class VaRCalculator {
       throw new Error(`Insufficient data for ${ticker}: Need at least 50 observations for Historical VaR`);
     }
 
-    // Convert returns to P&L
     const pnlSeries = assetReturns.map(r => r * positionSize);
-    
-    // Sort from worst to best
     const sortedPnL = [...pnlSeries].sort((a, b) => a - b);
     
-    // Find VaR at confidence level
     const varIndex = Math.floor((1 - confidenceLevel) * sortedPnL.length);
     const varValue = Math.abs(sortedPnL[varIndex]);
     
-    // Expected Shortfall (average of tail losses)
     const tailLosses = sortedPnL.slice(0, varIndex + 1);
     const expectedShortfall = Math.abs(tailLosses.reduce((sum, loss) => sum + loss, 0) / tailLosses.length);
 
-    // Statistics for backtesting
     const exceedances = pnlSeries.filter(pnl => pnl < -varValue).length;
     const exceedanceRate = (exceedances / pnlSeries.length) * 100;
 
@@ -166,7 +299,7 @@ export class VaRCalculator {
   }
 
   /**
-   * FIXED: Portfolio VaR with proper correlation handling
+   * FIXED: Portfolio VaR with proper matrix handling
    */
   static calculatePortfolioVaR(returnsMatrix, weights, confidenceLevel = 0.95, positionSize = 100000) {
     console.log(`📈 Calculating Portfolio VaR for ${returnsMatrix.length} assets...`);
@@ -179,17 +312,14 @@ export class VaRCalculator {
       throw new Error('Weights length must match number of assets');
     }
 
-    // Validate weights sum to 1
     const weightSum = weights.reduce((sum, w) => sum + w, 0);
     if (Math.abs(weightSum - 1.0) > 0.01) {
       console.warn('Weights do not sum to 1.0, normalizing...');
       weights = weights.map(w => w / weightSum);
     }
 
-    // Clean data
     const cleanReturnsMatrix = returnsMatrix.map(returns => this.removeOutliers(returns, 3));
     
-    // Calculate portfolio returns
     const portfolioReturns = [];
     const minLength = Math.min(...cleanReturnsMatrix.map(r => r.length));
     
@@ -201,31 +331,28 @@ export class VaRCalculator {
       portfolioReturns.push(portfolioReturn);
     }
 
-    // Portfolio statistics
     const portfolioMean = this.calculateMean(portfolioReturns);
     const portfolioVariance = this.calculateVariance(portfolioReturns, portfolioMean);
     const portfolioVolatility = Math.sqrt(portfolioVariance);
     
-    // Portfolio VaR using parametric method
     const alpha = 1 - confidenceLevel;
     const zScore = normalInverse(alpha);
     const varPercent = -(portfolioMean + zScore * portfolioVolatility);
     const varValue = Math.abs(varPercent * positionSize);
 
-    // Expected Shortfall
     const phi_z = Math.exp(-0.5 * zScore * zScore) / Math.sqrt(2 * Math.PI);
     const expectedShortfall = Math.abs((portfolioMean + (phi_z / alpha) * portfolioVolatility) * positionSize);
 
-    // Calculate individual asset statistics for component analysis
+    // Calculate individual asset statistics
     const assetMeans = cleanReturnsMatrix.map(returns => this.calculateMean(returns));
     const assetStds = cleanReturnsMatrix.map((returns, i) => 
       Math.sqrt(this.calculateVariance(returns, assetMeans[i]))
     );
     
-    // Correlation matrix
+    // FIXED: Correlation matrix calculation
     const correlationMatrix = this.calculateRobustCorrelationMatrix(cleanReturnsMatrix);
     
-    // FIXED Component VaR calculation
+    // FIXED: Component VaR calculation
     const componentVaR = this.calculateComponentVaR(weights, assetStds, correlationMatrix, portfolioVolatility, varValue);
     
     // Marginal VaR
@@ -257,9 +384,6 @@ export class VaRCalculator {
     };
   }
 
-  /**
-   * FIXED: Portfolio Historical VaR
-   */
   static calculatePortfolioHistoricalVaR(returnsMatrix, weights, confidenceLevel = 0.95, positionSize = 100000) {
     console.log(`📊 Calculating Portfolio Historical VaR...`);
     
@@ -267,7 +391,6 @@ export class VaRCalculator {
       throw new Error('Returns matrix is empty');
     }
 
-    // Calculate portfolio returns
     const portfolioReturns = [];
     const minLength = Math.min(...returnsMatrix.map(r => r.length));
     
@@ -279,18 +402,14 @@ export class VaRCalculator {
       portfolioReturns.push(portfolioReturn * positionSize);
     }
 
-    // Sort returns from worst to best
     const sortedReturns = [...portfolioReturns].sort((a, b) => a - b);
     
-    // Find VaR at given confidence level
     const varIndex = Math.floor((1 - confidenceLevel) * sortedReturns.length);
     const varValue = Math.abs(sortedReturns[varIndex]);
     
-    // Expected Shortfall
     const tailLosses = sortedReturns.slice(0, varIndex + 1);
     const expectedShortfall = Math.abs(tailLosses.reduce((sum, loss) => sum + loss, 0) / tailLosses.length);
 
-    // Exceedance analysis
     const exceedances = portfolioReturns.filter(pnl => pnl < -varValue).length;
     const exceedanceRate = (exceedances / portfolioReturns.length) * 100;
 
@@ -309,9 +428,6 @@ export class VaRCalculator {
     };
   }
 
-  /**
-   * Enhanced Monte Carlo VaR with proper correlation modeling
-   */
   static calculateMonteCarloVaR(returnsMatrix, weights, confidenceLevel = 0.95, 
                                numSimulations = 10000, positionSize = 100000) {
     
@@ -323,35 +439,25 @@ export class VaRCalculator {
       throw new Error('Weights length must match number of assets');
     }
 
-    // Clean data and calculate statistics
     const cleanReturnsMatrix = returnsMatrix.map(returns => this.removeOutliers(returns, 3));
     const means = cleanReturnsMatrix.map(returns => this.calculateMean(returns));
     const stds = cleanReturnsMatrix.map((returns, i) => 
       Math.sqrt(this.calculateVariance(returns, means[i]))
     );
 
-    // Calculate correlation matrix
     const correlationMatrix = this.calculateRobustCorrelationMatrix(cleanReturnsMatrix);
-    
-    // Cholesky decomposition for correlated random number generation
     const choleskyMatrix = this.choleskyDecomposition(correlationMatrix);
     
     const portfolioReturns = [];
     
-    // Run Monte Carlo simulations
     for (let sim = 0; sim < numSimulations; sim++) {
-      // Generate independent standard normal random variables
       const independentRandom = Array(numAssets).fill(0).map(() => boxMullerRandom());
-      
-      // Apply Cholesky decomposition to get correlated random variables
       const correlatedRandom = this.matrixVectorMultiply(choleskyMatrix, independentRandom);
       
-      // Generate asset returns
       const assetReturns = correlatedRandom.map((random, i) => 
         means[i] + random * stds[i]
       );
       
-      // Calculate portfolio return
       const portfolioReturn = weights.reduce((sum, weight, i) => 
         sum + weight * assetReturns[i], 0
       );
@@ -359,12 +465,10 @@ export class VaRCalculator {
       portfolioReturns.push(portfolioReturn * positionSize);
     }
 
-    // Calculate VaR and Expected Shortfall
     portfolioReturns.sort((a, b) => a - b);
     const varIndex = Math.floor((1 - confidenceLevel) * numSimulations);
     const varValue = Math.abs(portfolioReturns[varIndex]);
 
-    // Expected Shortfall (Conditional VaR)
     const tailLosses = portfolioReturns.slice(0, varIndex + 1);
     const expectedShortfall = Math.abs(tailLosses.reduce((sum, loss) => sum + loss, 0) / tailLosses.length);
 
@@ -384,21 +488,16 @@ export class VaRCalculator {
 
   // ===== FIXED COMPONENT CALCULATIONS =====
 
-  /**
-   * FIXED Component VaR calculation
-   */
   static calculateComponentVaR(weights, stds, correlationMatrix, portfolioVol, portfolioVaR) {
     const n = weights.length;
     const componentVaR = {};
     
     for (let i = 0; i < n; i++) {
-      // Calculate marginal contribution to portfolio variance
       let marginalContribution = 0;
       for (let j = 0; j < n; j++) {
         marginalContribution += weights[j] * stds[i] * stds[j] * correlationMatrix[i][j];
       }
       
-      // Component VaR = Weight × (Marginal VaR)
       const marginalVaR = marginalContribution / portfolioVol;
       const component = weights[i] * marginalVaR * (portfolioVaR / portfolioVol);
       
@@ -408,9 +507,6 @@ export class VaRCalculator {
     return componentVaR;
   }
 
-  /**
-   * FIXED Marginal VaR calculation
-   */
   static calculateMarginalVaR(weights, stds, correlationMatrix, portfolioVol) {
     const n = weights.length;
     const marginalVaR = [];
@@ -555,9 +651,6 @@ export class VaRCalculator {
     return Math.max(variance, 0);
   }
 
-  /**
-   * FIXED Kupiec Test
-   */
   static calculateKupiecTest(exceedances, totalObservations, expectedRate) {
     if (totalObservations === 0) return 0;
     
@@ -581,18 +674,15 @@ export class VaRCalculator {
 }
 
 /**
- * Portfolio Optimizer - unchanged but included for completeness
+ * FIXED Portfolio Optimizer without mathjs dependency
  */
-import * as math from 'mathjs';
-
 export class PortfolioOptimizer {
   constructor(returnsMatrix, riskFreeRate = 0.02) {
-    this.returnsMatrix = returnsMatrix; // Array of arrays: [[asset1_returns], [asset2_returns], ...]
+    this.returnsMatrix = returnsMatrix;
     this.riskFreeRate = riskFreeRate;
     this.numAssets = returnsMatrix.length;
     this.numObservations = returnsMatrix[0].length;
     
-    // Calculate annualized statistics
     this.meanReturns = this.calculateMeanReturns();
     this.covarianceMatrix = this.calculateCovarianceMatrix();
     
@@ -608,7 +698,7 @@ export class PortfolioOptimizer {
 
   calculateCovarianceMatrix() {
     const n = this.numAssets;
-    const covMatrix = math.zeros([n, n]);
+    const covMatrix = new SimpleMatrix(n, n);
     
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
@@ -633,7 +723,6 @@ export class PortfolioOptimizer {
     return covariance / (n - 1);
   }
 
-  // MARKOWITZ MONTE CARLO OPTIMIZATION (like Python version)
   optimizeMaxSharpe(numSimulations = 10000) {
     console.log(`🎲 Running Markowitz optimization with ${numSimulations.toLocaleString()} Monte Carlo simulations`);
     
@@ -643,7 +732,6 @@ export class PortfolioOptimizer {
     const allResults = [];
 
     for (let i = 0; i < numSimulations; i++) {
-      // Generate random weights
       const weights = this.generateRandomWeights();
       const metrics = this.calculatePortfolioMetrics(weights);
       
@@ -669,50 +757,94 @@ export class PortfolioOptimizer {
     };
   }
 
-  // TARGET RETURN OPTIMIZATION (like Python version)
+  optimizeMinRisk() {
+    console.log(`🛡️ Optimizing for minimum risk`);
+    
+    let bestVolatility = Infinity;
+    let bestWeights = null;
+    let bestMetrics = null;
+
+    // More focused search for minimum variance
+    for (let i = 0; i < 50000; i++) {
+      const weights = this.generateRandomWeights();
+      const metrics = this.calculatePortfolioMetrics(weights);
+
+      if (metrics.volatility < bestVolatility) {
+        bestVolatility = metrics.volatility;
+        bestWeights = [...weights];
+        bestMetrics = metrics;
+      }
+    }
+
+    console.log(`✅ Min risk optimization complete. Volatility: ${(bestVolatility * 100).toFixed(2)}%`);
+
+    return {
+      weights: bestWeights,
+      ...bestMetrics,
+      validation: this.validateOptimizationResult(bestWeights)
+    };
+  }
+
+  optimizeEqualWeight() {
+    console.log(`⚖️ Calculating equal weight portfolio`);
+    
+    const weights = Array(this.numAssets).fill(1 / this.numAssets);
+    const metrics = this.calculatePortfolioMetrics(weights);
+
+    return {
+      weights: weights,
+      ...metrics,
+      validation: this.validateOptimizationResult(weights)
+    };
+  }
+
+  optimizeRiskParity() {
+    console.log(`🎲 Optimizing for risk parity`);
+    
+    // Simplified risk parity - equal risk contribution
+    let bestWeights = null;
+    let bestRiskParityError = Infinity;
+
+    for (let i = 0; i < 20000; i++) {
+      const weights = this.generateRandomWeights();
+      const riskContributions = this.calculateRiskContributions(weights);
+      const targetContrib = 1 / this.numAssets;
+      
+      const error = riskContributions.reduce((sum, contrib) => 
+        sum + Math.pow(contrib - targetContrib, 2), 0
+      );
+
+      if (error < bestRiskParityError) {
+        bestRiskParityError = error;
+        bestWeights = [...weights];
+      }
+    }
+
+    const metrics = this.calculatePortfolioMetrics(bestWeights);
+
+    console.log(`✅ Risk parity optimization complete. Error: ${bestRiskParityError.toFixed(6)}`);
+
+    return {
+      weights: bestWeights,
+      ...metrics,
+      validation: this.validateOptimizationResult(bestWeights)
+    };
+  }
+
   optimizeForTargetReturn(targetReturn) {
     console.log(`🎯 Optimizing for target return: ${(targetReturn * 100).toFixed(2)}%`);
     
-    // Use quadratic programming approach for exact solution
-    try {
-      const weights = this.solveTargetReturnOptimization(targetReturn);
-      const metrics = this.calculatePortfolioMetrics(weights);
-      
-      return {
-        weights,
-        ...metrics,
-        targetAchieved: Math.abs(metrics.expectedReturn - targetReturn) < 0.001
-      };
-    } catch (error) {
-      // Fallback to Monte Carlo if exact solution fails
-      console.warn('⚠️ Exact optimization failed, using Monte Carlo fallback');
-      return this.monteCarloTargetReturn(targetReturn);
-    }
+    return this.monteCarloTargetReturn(targetReturn);
   }
 
-  // TARGET VOLATILITY OPTIMIZATION (like Python version)
   optimizeForTargetVolatility(targetVolatility) {
     console.log(`🎯 Optimizing for target volatility: ${(targetVolatility * 100).toFixed(2)}%`);
     
-    try {
-      const weights = this.solveTargetVolatilityOptimization(targetVolatility);
-      const metrics = this.calculatePortfolioMetrics(weights);
-      
-      return {
-        weights,
-        ...metrics,
-        targetAchieved: Math.abs(metrics.volatility - targetVolatility) < 0.001
-      };
-    } catch (error) {
-      console.warn('⚠️ Exact optimization failed, using Monte Carlo fallback');
-      return this.monteCarloTargetVolatility(targetVolatility);
-    }
+    return this.monteCarloTargetVolatility(targetVolatility);
   }
 
-  // EFFICIENT FRONTIER GENERATION (like Python version)
   generateEfficientFrontier(allResults = null, numPoints = 100) {
     if (!allResults) {
-      // Generate if not provided
       const tempResults = [];
       for (let i = 0; i < 5000; i++) {
         const weights = this.generateRandomWeights();
@@ -722,7 +854,6 @@ export class PortfolioOptimizer {
       allResults = tempResults;
     }
 
-    // Sort by volatility and filter for efficient portfolios
     const sortedResults = allResults.sort((a, b) => a.volatility - b.volatility);
     const efficientPortfolios = [];
     let maxReturnSoFar = -Infinity;
@@ -734,7 +865,6 @@ export class PortfolioOptimizer {
       }
     }
 
-    // Interpolate to get exactly numPoints portfolios
     return this.interpolateEfficientFrontier(efficientPortfolios, numPoints);
   }
 
@@ -750,7 +880,6 @@ export class PortfolioOptimizer {
     for (let i = 0; i < numPoints; i++) {
       const targetVol = minVol + i * volStep;
       
-      // Find surrounding points
       let lowerIndex = 0;
       for (let j = 0; j < efficientPortfolios.length - 1; j++) {
         if (efficientPortfolios[j].volatility <= targetVol && 
@@ -763,7 +892,6 @@ export class PortfolioOptimizer {
       const lower = efficientPortfolios[lowerIndex];
       const upper = efficientPortfolios[Math.min(lowerIndex + 1, efficientPortfolios.length - 1)];
       
-      // Linear interpolation
       const weight = upper.volatility === lower.volatility ? 0 : 
                     (targetVol - lower.volatility) / (upper.volatility - lower.volatility);
       
@@ -778,11 +906,9 @@ export class PortfolioOptimizer {
   }
 
   calculatePortfolioMetrics(weights) {
-    // Expected return
     const expectedReturn = weights.reduce((sum, weight, index) => 
       sum + weight * this.meanReturns[index], 0);
 
-    // Portfolio variance
     let portfolioVariance = 0;
     for (let i = 0; i < this.numAssets; i++) {
       for (let j = 0; j < this.numAssets; j++) {
@@ -801,15 +927,40 @@ export class PortfolioOptimizer {
     };
   }
 
+  calculateRiskContributions(weights) {
+    const riskContributions = [];
+    const portfolioVariance = this.calculatePortfolioVariance(weights);
+    
+    for (let i = 0; i < this.numAssets; i++) {
+      let marginalContribution = 0;
+      for (let j = 0; j < this.numAssets; j++) {
+        marginalContribution += weights[j] * this.covarianceMatrix.get([i, j]);
+      }
+      
+      const riskContribution = weights[i] * marginalContribution / portfolioVariance;
+      riskContributions.push(riskContribution);
+    }
+    
+    return riskContributions;
+  }
+
+  calculatePortfolioVariance(weights) {
+    let variance = 0;
+    for (let i = 0; i < this.numAssets; i++) {
+      for (let j = 0; j < this.numAssets; j++) {
+        variance += weights[i] * weights[j] * this.covarianceMatrix.get([i, j]);
+      }
+    }
+    return variance;
+  }
+
   generateRandomWeights() {
     const weights = Array.from({ length: this.numAssets }, () => Math.random());
     const sum = weights.reduce((acc, weight) => acc + weight, 0);
     return weights.map(weight => weight / sum);
   }
 
-  // CAPITAL ALLOCATION WITH RISK-FREE ASSET (like Python version)
   calculateCapitalAllocation(targetReturn = null, targetVolatility = null) {
-    // First find the tangency portfolio (max Sharpe ratio)
     const tangencyResult = this.optimizeMaxSharpe(5000);
     const tangencyReturn = tangencyResult.expectedReturn;
     const tangencyVolatility = tangencyResult.volatility;
@@ -826,14 +977,12 @@ export class PortfolioOptimizer {
 
     let riskyWeight;
     if (targetReturn !== null) {
-      // w = (R_target - R_f) / (R_p - R_f)
       riskyWeight = (targetReturn - this.riskFreeRate) / (tangencyReturn - this.riskFreeRate);
     } else if (targetVolatility !== null) {
-      // w = σ_target / σ_p
       riskyWeight = targetVolatility / tangencyVolatility;
     }
 
-    riskyWeight = Math.max(0, Math.min(riskyWeight, 5)); // Allow up to 5x leverage
+    riskyWeight = Math.max(0, Math.min(riskyWeight, 5));
     const riskFreeWeight = 1 - riskyWeight;
 
     const portfolioReturn = this.riskFreeRate + riskyWeight * (tangencyReturn - this.riskFreeRate);
@@ -849,7 +998,6 @@ export class PortfolioOptimizer {
     };
   }
 
-  // Monte Carlo fallbacks
   monteCarloTargetReturn(targetReturn, tolerance = 0.005) {
     let bestWeights = null;
     let bestVolatility = Infinity;
@@ -904,7 +1052,6 @@ export class PortfolioOptimizer {
     throw new Error(`Could not find portfolio with target volatility ${targetVolatility}`);
   }
 
-  // VALIDATION METHODS
   validateOptimizationResult(weights) {
     const tolerance = 1e-6;
     const weightSum = weights.reduce((sum, w) => sum + w, 0);
@@ -925,7 +1072,7 @@ export class PortfolioOptimizer {
   }
 }
 
-// CAPM ANALYSIS CLASS (like Python statsmodels)
+// Keep other classes unchanged...
 export class CAPMAnalyzer {
   constructor(assetReturns, marketReturns, riskFreeRate = 0.02) {
     this.assetReturns = assetReturns;
@@ -939,14 +1086,12 @@ export class CAPMAnalyzer {
     const assetExcessReturns = this.assetReturns.map(r => r - this.riskFreeRate / 252);
     const marketExcessReturns = this.marketReturns.map(r => r - this.riskFreeRate / 252);
 
-    // Linear regression: R_i - R_f = alpha + beta * (R_m - R_f) + epsilon
     const regression = this.performLinearRegression(assetExcessReturns, marketExcessReturns);
     
-    const alpha = regression.alpha * 252; // Annualized
+    const alpha = regression.alpha * 252;
     const beta = regression.beta;
     const rSquared = regression.rSquared;
 
-    // CAPM expected return: R_f + beta * (E(R_m) - R_f)
     const marketPremium = (this.marketReturns.reduce((sum, r) => sum + r, 0) / this.marketReturns.length) * 252 - this.riskFreeRate;
     const capmExpectedReturn = this.riskFreeRate + beta * marketPremium;
 
@@ -972,7 +1117,6 @@ export class CAPMAnalyzer {
     const beta = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
     const alpha = (sumY - beta * sumX) / n;
 
-    // R-squared calculation
     const yMean = sumY / n;
     const ssRes = y.reduce((sum, val, i) => {
       const predicted = alpha + beta * x[i];
@@ -994,11 +1138,10 @@ export class CAPMAnalyzer {
       return sum + Math.pow(diff - mean, 2);
     }, 0) / (trackingDifferences.length - 1);
 
-    return Math.sqrt(variance * 252); // Annualized
+    return Math.sqrt(variance * 252);
   }
 }
 
-// RISK ATTRIBUTION CALCULATOR
 export class RiskAttributionCalculator {
   static calculateRiskContribution(weights, covarianceMatrix) {
     const portfolioVariance = RiskAttributionCalculator.calculatePortfolioVariance(weights, covarianceMatrix);
@@ -1028,11 +1171,10 @@ export class RiskAttributionCalculator {
   }
 }
 
-// CORRELATION MATRIX CALCULATOR
 export class CorrelationCalculator {
   static calculateCorrelationMatrix(returnsMatrix) {
     const n = returnsMatrix.length;
-    const correlationMatrix = math.zeros([n, n]);
+    const correlationMatrix = SimpleMatrix.zeros([n, n]);
     
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
@@ -1068,4 +1210,3 @@ export class CorrelationCalculator {
     return denominator === 0 ? 0 : numerator / denominator;
   }
 }
-
