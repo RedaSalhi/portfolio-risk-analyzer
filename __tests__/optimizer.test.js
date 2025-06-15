@@ -1,4 +1,4 @@
-const { PortfolioOptimizer } = require('../src/utils/financialCalculations');
+import { PortfolioOptimizer } from '../src/utils/financialCalculations.js';
 
 describe('Target weight optimizations', () => {
   const len = 260;

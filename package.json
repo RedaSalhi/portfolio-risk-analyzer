@@ -1,6 +1,7 @@
 {
   "name": "financial-risk-analyzer",
   "main": "expo-router/entry",
+  "type": "module",
   "version": "1.0.0",
   "description": "Modern Portfolio Theory & Value-at-Risk Analysis Mobile App",
   "scripts": {
@@ -10,7 +11,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "reset-project": "node ./scripts/reset-project.js",
-    "test": "jest"
+    "test": "jest --config jest.config.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
