@@ -11,7 +11,7 @@ class RealTimeDataFetcher {
     this.endpoints = {
       yahoo: 'https://query1.finance.yahoo.com/v8/finance/chart/',
       fred: 'https://api.stlouisfed.org/fred/series/observations',
-      fredApiKey: 'YOUR_FRED_API_KEY', // Replace with your FRED API key
+      fredApiKey: '6c9061531b2c22864f1516a52090aabd', // Replace with your FRED API key
       // Fallback proxy for CORS issues
       proxy: 'https://api.allorigins.win/get?url='
     };
