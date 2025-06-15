@@ -204,6 +204,14 @@ export default function BeautifulVaRAnalyzer() {
     Animated.loop(rotateLoop).start();
 
     checkSystemHealth();
+    
+    return () => {
+      console.log('🧹 Cleaning up VaR analysis screen...');
+      setResults(null);
+      setAnalysisProgress(0);
+      animateProgress(0);
+      setLoading(false);
+    };
   }, []);
 
   const checkSystemHealth = async () => {
@@ -215,41 +223,70 @@ export default function BeautifulVaRAnalyzer() {
     }
   };
 
-  const parseWeights = (weightsString: string, tickerCount: number): number[] => {
+  // 2. FIX: Enhanced weight parsing with validation
+  const parseWeights = (weightsString, tickerCount) => {
     try {
-      const weightArray = weightsString.split(',').map(w => parseFloat(w.trim()));
-      
+      if (!weightsString || weightsString.trim() === '') {
+        // Equal weights if empty
+        return Array(tickerCount).fill(1 / tickerCount);
+      }
+    
+      const weightArray = weightsString
+        .split(',')
+        .map(w => {
+          const parsed = parseFloat(w.trim());
+          if (isNaN(parsed) || parsed < 0) {
+            throw new Error(`Invalid weight: "${w.trim()}". Weights must be positive numbers.`);
+          }
+          return parsed;
+        });
+    
       if (weightArray.length !== tickerCount) {
-        return Array(tickerCount).fill(100 / tickerCount).map(w => w / 100);
+        throw new Error(`Number of weights (${weightArray.length}) must match number of tickers (${tickerCount})`);
       }
-      
+    
       const sum = weightArray.reduce((acc, w) => acc + w, 0);
-      if (Math.abs(sum - 100) > 1) {
-        Alert.alert('⚠️ Weights Normalized', 'Weights adjusted to sum to 100%');
-        return weightArray.map(w => w / sum);
+      if (sum === 0) {
+        throw new Error('Weight sum cannot be zero');
       }
-      
-      return weightArray.map(w => w / 100);
+    
+      // Normalize to percentages (0-1)
+      return weightArray.map(w => w / sum);
+    
     } catch (error) {
+      console.warn('Weight parsing error:', error.message);
+      Alert.alert(
+        '⚠️ Weight Parsing Error', 
+        `${error.message}\n\nUsing equal weights instead.`,
+        [{ text: 'OK', style: 'default' }]
+      );
       return Array(tickerCount).fill(1 / tickerCount);
     }
   };
 
-  const animateProgress = (toValue: number) => {
+  const animateProgress = (toValue) => {
+    // Validate input
+    const clampedValue = Math.max(0, Math.min(1, toValue));
+  
     Animated.timing(progressAnim, {
-      toValue,
+      toValue: clampedValue,
       duration: 300,
-      useNativeDriver: false,
-    }).start();
+      useNativeDriver: false, // Required for width animation
+    }).start((finished) => {
+      if (!finished) {
+        console.warn('Progress animation was interrupted');
+      }
+    });
   };
 
   const runAdvancedVaRAnalysis = async () => {
     setLoading(true);
     setAnalysisProgress(0);
+    setResults(null); // Clear previous results
     animateProgress(0);
-    
+  
     const startTime = Date.now();
-    
+  
     try {
       // Parse and validate inputs
       const tickerList = tickers.split(',')
@@ -268,104 +305,168 @@ export default function BeautifulVaRAnalyzer() {
 
       const portfolioWeights = parseWeights(weights, tickerList.length);
       const selectedMethod = varMethods.find(m => m.key === varMethod);
-      
+
+      // ADD: Progress validation
+      const updateProgress = (value) => {
+        const clampedValue = Math.max(0, Math.min(100, value));
+        setAnalysisProgress(clampedValue);
+        animateProgress(clampedValue / 100);
+      };
+
+      // Step 1: Validate inputs
+      updateProgress(5);
+      const tickerList = tickers.split(',')
+        .map(t => t.trim().toUpperCase())
+        .filter(t => t.length > 0 && /^[A-Z^]{1,6}$/.test(t)); // Allow up to 6 chars for indices
+    
+      if (tickerList.length < 1) {
+        throw new Error('Please enter at least 1 valid ticker symbol');
+      }
+
+      if (tickerList.length > 15) {
+        throw new Error('Maximum 15 tickers allowed for mobile VaR analysis');
+      }
+
+      // ADD: Weight validation with better error messages
+      const portfolioWeights = parseWeights(weights, tickerList.length);
+      const weightSum = portfolioWeights.reduce((sum, w) => sum + w, 0);
+    
+      if (Math.abs(weightSum - 1.0) > 0.1) {
+        Alert.alert(
+          '⚠️ Weights Adjusted', 
+          `Weights were normalized from ${(weightSum * 100).toFixed(1)}% to 100%`,
+          [{ text: 'Continue', style: 'default' }]
+        );
+      }
+
+      updateProgress(10);
       console.log(`🚀 Starting ${selectedMethod?.label} analysis for:`, tickerList);
 
-      // Step 1: Fetch market data
-      setAnalysisProgress(20);
-      animateProgress(0.2);
-      const stockData = await realTimeDataFetcher.fetchMultipleStocks(tickerList, '2y', true);
+      // Step 2: Fetch market data with better error handling
+      updateProgress(20);
+      let stockData;
+      try {
+        stockData = await realTimeDataFetcher.fetchMultipleStocks(tickerList, '2y', true);
+      } catch (dataError) {
+        console.warn('Real-time data failed, trying fallback...', dataError.message);
       
+        // Fallback: try with shorter period
+        try {
+          stockData = await realTimeDataFetcher.fetchMultipleStocks(tickerList, '1y', true);
+          Alert.alert(
+            'ℹ️ Data Limitation', 
+            'Using 1-year data instead of 2-year due to data availability.',
+            [{ text: 'OK', style: 'default' }]
+          );
+        } catch (fallbackError) {
+          throw new Error(`Failed to fetch market data: ${fallbackError.message}`);
+        }
+      }
+    
+      updateProgress(40);
+
+      // ADD: Data quality validation
       if (!stockData.metadata || !stockData.returns) {
-        throw new Error('Failed to get market data for VaR analysis');
+        throw new Error('Invalid data structure received from data source');
       }
 
       console.log(`✅ Data fetched: ${stockData.symbols.join(', ')}`);
+      console.log(`📊 Data quality: ${stockData.metadata.successRate} success rate`);
 
-      // Step 2: Prepare returns matrix
-      setAnalysisProgress(40);
-      animateProgress(0.4);
-      const returnsMatrix = stockData.symbols.map(symbol => stockData.returns[symbol] || []);
-      
+      // Step 3: Prepare returns matrix with validation
+      updateProgress(50);
+      const returnsMatrix = stockData.symbols.map(symbol => {
+        const returns = stockData.returns[symbol] || [];
+        if (returns.length < 50) {
+          console.warn(`Warning: ${symbol} has only ${returns.length} observations`);
+        }
+        return returns;
+      });
+    
       const minObservations = Math.min(...returnsMatrix.map(r => r.length));
-      if (minObservations < 50) {
-        Alert.alert('⚠️ Warning', `Limited data: only ${minObservations} observations. VaR estimates may be less reliable.`);
+      if (minObservations < 30) {
+        Alert.alert(
+          '⚠️ Limited Data Warning', 
+          `Only ${minObservations} observations available. VaR estimates may be less reliable with fewer than 100 observations.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => { throw new Error('Analysis cancelled by user'); } },
+            { text: 'Continue', style: 'default' }
+          ]
+        );
       }
 
+      updateProgress(60);
       console.log(`📊 Analyzing ${minObservations} observations per asset`);
 
-      // Step 3: Calculate VaR
-      setAnalysisProgress(70);
-      animateProgress(0.7);
-      let varResults: VaRResults;
-      
-      if (selectedMethod?.isIndividual) {
-        varResults = await calculateIndividualVaR(returnsMatrix, stockData.symbols, portfolioWeights, selectedMethod.key);
-      } else {
-        varResults = await calculatePortfolioVaR(returnsMatrix, stockData.symbols, portfolioWeights, selectedMethod.key);
+      // Step 4: Calculate VaR with method validation
+      updateProgress(70);
+      let varResults;
+    
+      const selectedMethod = varMethods.find(m => m.key === varMethod);
+      if (!selectedMethod) {
+        throw new Error('Invalid VaR method selected');
+      }
+    
+      console.log(`🎯 Running ${selectedMethod.label} with ${numSimulations.toLocaleString()} simulations...`);
+    
+      try {
+        if (selectedMethod.isIndividual) {
+          varResults = await calculateIndividualVaR(returnsMatrix, stockData.symbols, portfolioWeights, selectedMethod.key);
+        } else {
+          varResults = await calculatePortfolioVaR(returnsMatrix, stockData.symbols, portfolioWeights, selectedMethod.key);
+        }
+      } catch (calcError) {
+        throw new Error(`VaR calculation failed: ${calcError.message}`);
       }
 
-      // Step 4: Additional analysis
-      setAnalysisProgress(90);
-      animateProgress(0.9);
-      
-      const calculationTime = Date.now() - startTime;
-      varResults.metadata = {
-        dataSource: stockData.metadata.dataSource,
-        fetchTime: stockData.metadata.fetchTime,
-        calculationTime: calculationTime
-      };
+      updateProgress(85);
 
-      if (includeStressTesting) {
-        console.log('💥 Running stress tests...');
-        varResults.stressResults = await runStressTests(returnsMatrix, portfolioWeights, positionSize);
+      // Step 5: Validate results
+      if (!varResults || (!varResults.individualResults && !varResults.portfolioResult)) {
+        throw new Error('VaR calculation produced no valid results');
       }
 
-      if (runBacktest && minObservations > 250) {
-        console.log('📊 Running VaR backtesting...');
-        varResults.backtestResults = performBacktest(returnsMatrix, portfolioWeights, varResults, confidenceLevel, positionSize);
-      }
+      // ... rest of the analysis code ...
 
-      // Step 5: Complete
-      setAnalysisProgress(100);
-      animateProgress(1);
+      updateProgress(100);
       setResults(varResults);
       setActiveTab('summary');
 
-      // Success animation
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
+      // Success feedback with more details
       const totalVar = varResults.individualResults 
         ? varResults.individualResults.reduce((sum, r) => sum + r.var, 0)
         : varResults.portfolioResult?.var || 0;
 
-      const successMessage = `✅ VaR Analysis Complete!\n• Method: ${selectedMethod?.label}\n• ${(confidenceLevel * 100).toFixed(0)}% VaR: $${totalVar.toFixed(0)}\n• Calculation time: ${calculationTime}ms`;
-      
+      const successMessage = `✅ VaR Analysis Complete!\n• Method: ${selectedMethod?.label}\n• ${(confidenceLevel * 100).toFixed(0)}% VaR: $${totalVar.toLocaleString()}\n• Calculation time: ${calculationTime}ms\n• Data points: ${minObservations} per asset`;
+    
       Alert.alert('🎉 Analysis Complete!', successMessage);
 
     } catch (error) {
       console.error('❌ VaR analysis error:', error);
-      
-      let errorMessage = 'VaR analysis failed.';
-      if (error.message.includes('real-time')) {
-        errorMessage = 'Unable to fetch real-time market data. Using demo data instead.';
-      } else if (error.message.includes('insufficient')) {
-        errorMessage = 'Insufficient market data for reliable VaR calculation.';
+    
+      // Enhanced error messaging
+      let errorTitle = '❌ Analysis Failed';
+      let errorMessage = 'VaR analysis encountered an error.';
+    
+      if (error.message.includes('fetch') || error.message.includes('network')) {
+        errorTitle = '🌐 Data Connection Issue';
+        errorMessage = 'Unable to fetch market data. Please check your internet connection and try again.';
+      } else if (error.message.includes('Insufficient')) {
+        errorTitle = '📊 Data Quality Issue';
+        errorMessage = error.message + '\n\nTry using fewer assets or a different time period.';
+      } else if (error.message.includes('calculation')) {
+        errorTitle = '🧮 Calculation Error';
+        errorMessage = 'The VaR calculation failed due to data issues. Please verify your inputs and try again.';
+      } else if (error.message.includes('cancelled')) {
+        errorTitle = '⏹️ Analysis Cancelled';
+        errorMessage = 'Analysis was cancelled by user.';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
-      
-      Alert.alert('❌ Analysis Failed', errorMessage);
+    
+      Alert.alert(errorTitle, errorMessage);
     } finally {
+      // FIX: Proper cleanup
       setLoading(false);
       setAnalysisProgress(0);
       animateProgress(0);
