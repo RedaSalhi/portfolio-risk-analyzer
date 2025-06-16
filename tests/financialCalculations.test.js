@@ -337,9 +337,43 @@ describe('Integration Tests', () => {
     expect(minRisk.volatility).toBeLessThanOrEqual(equalWeight.volatility);
     
     // Equal weight should have equal weights
-    equalWeight.weights.forEach(weight => {
-      expect(weight).toBeCloseTo(1/3, 2);
-    });
+  equalWeight.weights.forEach(weight => {
+    expect(weight).toBeCloseTo(1/3, 2);
+  });
+  });
+});
+
+describe('Include Risk-Free Flag', () => {
+  test('optimizer returns risk-free weight when flag is true', () => {
+    const mockReturns = [
+      generateNormalReturns(100),
+      generateNormalReturns(100),
+    ];
+
+    const optimizer = new PortfolioOptimizer(mockReturns, 0.02, true);
+    const resultReturn = optimizer.optimizeForTargetReturn(0.1);
+    const resultVol = optimizer.optimizeForTargetVolatility(0.15);
+
+    expect(resultReturn.weights.length).toBe(3);
+    expect(resultVol.weights.length).toBe(3);
+    expect(resultReturn.riskFreeWeight).toBeDefined();
+    expect(resultVol.riskFreeWeight).toBeDefined();
+  });
+
+  test('optimizer omits risk-free weight when flag is false', () => {
+    const mockReturns = [
+      generateNormalReturns(100),
+      generateNormalReturns(100),
+    ];
+
+    const optimizer = new PortfolioOptimizer(mockReturns, 0.02, false);
+    const resultReturn = optimizer.optimizeForTargetReturn(0.1);
+    const resultVol = optimizer.optimizeForTargetVolatility(0.15);
+
+    expect(resultReturn.weights.length).toBe(2);
+    expect(resultVol.weights.length).toBe(2);
+    expect(resultReturn.riskFreeWeight).toBeUndefined();
+    expect(resultVol.riskFreeWeight).toBeUndefined();
   });
 });
 
