@@ -4,18 +4,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    Dimensions,
-    Animated,
-    Platform,
-    StatusBar,
+  Animated,
+  Dimensions,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { realTimeDataFetcher } from '../src/utils/realTimeDataFetcher';
 
@@ -177,7 +177,7 @@ export default function BeautifulHomeScreen() {
             };
           }
           return null;
-        } catch (error) {
+        } catch (error: any) {
           console.warn(`Failed to fetch ${index.symbol}:`, error.message);
           return null;
         }
@@ -258,7 +258,7 @@ export default function BeautifulHomeScreen() {
         activeOpacity={0.9}
       >
         <LinearGradient
-          colors={item.gradient}
+          colors={item.gradient as [string, string]}
           style={styles.menuItemGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}

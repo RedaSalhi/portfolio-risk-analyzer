@@ -1,17 +1,19 @@
 // Fixed Charts.tsx - Proper prop handling and null checking
 // This replaces your existing src/components/Charts.tsx
 
+import { Ionicons } from '@expo/vector-icons';
+import { Chart, registerables } from 'chart.js';
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
   Dimensions,
   ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { BarChart, LineChart, PieChart } from 'react-native-chart-kit';
+Chart.register(...registerables);
 
 const { width } = Dimensions.get('window');
 const chartWidth = width - 40;
@@ -280,6 +282,7 @@ export const CAPMAnalysisChart: React.FC<CAPMAnalysisProps> = ({
           }}
           style={styles.chart}
           yAxisSuffix=""
+          yAxisLabel="β "
           showValuesOnTopOfBars={true}
         />
 

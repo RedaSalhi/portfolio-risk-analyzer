@@ -4,31 +4,31 @@
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    Dimensions,
-    Platform,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { 
-  EfficientFrontierChart, 
-  PortfolioWeightsChart, 
-  CapitalAllocationChart, 
+import {
+  CapitalAllocationChart,
   CAPMAnalysisChart,
-  CorrelationMatrixChart 
+  CorrelationMatrixChart,
+  EfficientFrontierChart,
+  PortfolioWeightsChart
 } from '../src/components/Charts';
+import { CAPMAnalyzer, CorrelationCalculator, PortfolioOptimizer, RiskAttributionCalculator } from '../src/utils/financialCalculations';
 import { realTimeDataFetcher } from '../src/utils/realTimeDataFetcher';
-import { PortfolioOptimizer, CAPMAnalyzer, RiskAttributionCalculator, CorrelationCalculator } from '../src/utils/financialCalculations';
 
 const { width } = Dimensions.get('window');
 
@@ -62,6 +62,26 @@ interface OptimizationResults {
     marketReturn: number;
     monteCarloSimulations: number;
   };
+}
+
+interface StockData {
+  symbols: string[];
+  returns: { [key: string]: number[] };
+  metadata: {
+    dataSource: string;
+    fetchTime: string;
+  };
+}
+
+interface MarketData {
+  returns: { [key: string]: number[] };
+}
+
+interface CAPMMetrics {
+  capmExpectedReturn: number;
+  beta: number;
+  alpha: number;
+  rSquared: number;
 }
 
 export default function FixedPortfolioOptimizer() {
@@ -252,7 +272,7 @@ export default function FixedPortfolioOptimizer() {
       animateProgress(0.2);
       console.log('📊 Fetching real-time market data...');
     
-      const stockData = await realTimeDataFetcher.getHistoricalData(tickerList, '5y');
+      const stockData = await realTimeDataFetcher.getHistoricalData(tickerList, '5y') as StockData;
     
       if (!stockData || !stockData.returns || Object.keys(stockData.returns).length === 0) {
         throw new Error('Failed to fetch market data. Please check ticker symbols and internet connection.');
@@ -275,10 +295,10 @@ export default function FixedPortfolioOptimizer() {
       if (useMarketBenchmark) {
         console.log('📈 Fetching S&P 500 benchmark data...');
         try {
-          const marketData = await realTimeDataFetcher.getHistoricalData(['^GSPC'], '5y');
+          const marketData = await realTimeDataFetcher.getHistoricalData(['^GSPC'], '5y') as MarketData;
           if (marketData && marketData.returns['^GSPC']) {
             marketReturns = marketData.returns['^GSPC'];
-            marketReturn = marketReturns.reduce((sum, ret) => sum + ret, 0) / marketReturns.length * 252;
+            marketReturn = marketReturns.reduce((sum: number, ret: number) => sum + ret, 0) / marketReturns.length * 252;
             console.log(`📊 Market return: ${(marketReturn * 100).toFixed(2)}%`);
           }
         } catch (error) {
@@ -289,7 +309,7 @@ export default function FixedPortfolioOptimizer() {
       // Step 4: Prepare returns matrix
       setOptimizationProgress(65);
       animateProgress(0.65);
-      const returnsMatrix = stockData.symbols.map(symbol => {
+      const returnsMatrix = stockData.symbols.map((symbol: string) => {
         const returns = stockData.returns[symbol] || [];
         if (returns.length < 100) {
           console.warn(`Warning: ${symbol} has only ${returns.length} observations`);
@@ -297,7 +317,7 @@ export default function FixedPortfolioOptimizer() {
         return returns;
       });
     
-      const minObservations = Math.min(...returnsMatrix.map(r => r.length));
+      const minObservations = Math.min(...returnsMatrix.map((r: number[]) => r.length));
       if (minObservations < 50) {
         throw new Error(`Insufficient data: minimum ${minObservations} observations. Need at least 50 for reliable optimization.`);
       }
@@ -426,9 +446,9 @@ export default function FixedPortfolioOptimizer() {
       animateProgress(0.9);
     
       // CAPM Analysis
-      const capmResults = {};
-      const betas = {};
-      const alphas = {};
+      const capmResults: { [key: string]: number } = {};
+      const betas: { [key: string]: number } = {};
+      const alphas: { [key: string]: number } = {};
     
       if (marketReturns && marketReturns.length > 0) {
         for (let i = 0; i < stockData.symbols.length; i++) {
@@ -476,17 +496,16 @@ export default function FixedPortfolioOptimizer() {
       let capitalAllocation = null;
       if (includeRiskFree) {
         if (optimizationMethod === 'targetReturn') {
-          capitalAllocation = optimizer.calculateCapitalAllocation(targetReturn, null);
+          capitalAllocation = optimizer.calculateCapitalAllocation(targetReturn, undefined);
         } else if (optimizationMethod === 'targetRisk') {
-          capitalAllocation = optimizer.calculateCapitalAllocation(null, targetRisk);
+          capitalAllocation = optimizer.calculateCapitalAllocation(undefined, targetRisk);
         } else {
           capitalAllocation = optimizer.calculateCapitalAllocation();
         }
       }
 
       // Efficient frontier
-      const efficientFrontier = optimizationResult.efficientFrontier || 
-        optimizer.generateEfficientFrontier(optimizationResult.allSimulations, 100);
+      const efficientFrontier = optimizer.generateAnalyticalEfficientFrontier(100);
 
       // Step 8: Final results
       setOptimizationProgress(100);
@@ -550,29 +569,31 @@ export default function FixedPortfolioOptimizer() {
     
       Alert.alert('🎉 Optimization Complete!', successMessage);
 
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Optimization error:', error);
     
       let errorTitle = '❌ Optimization Failed';
       let errorMessage = 'Portfolio optimization encountered an error.';
     
-      if (error.message.includes('real-time')) {
-        errorTitle = '🌐 Data Connection Issue';
-        errorMessage = 'Unable to fetch real-time market data. Please check your internet connection and try again.';
-      } else if (error.message.includes('singular') || error.message.includes('invert')) {
-        errorTitle = '📊 Matrix Calculation Error';
-        errorMessage = 'The covariance matrix is singular (non-invertible). This usually happens when assets are perfectly correlated. Try using different assets or a longer time period.';
-      } else if (error.message.includes('sufficient') || error.message.includes('Insufficient')) {
-        errorTitle = '📊 Data Quality Issue';
-        errorMessage = error.message + '\n\nTry using fewer assets or a different time period.';
-      } else if (error.message.includes('invalid weights')) {
-        errorTitle = '🧮 Calculation Error';
-        errorMessage = 'The optimization produced invalid results. This may be due to extreme market conditions in your data. Try adjusting the time period or optimization method.';
-      } else if (error.message.includes('Target Return') || error.message.includes('Target Risk')) {
-        errorTitle = '🎯 Target Not Achievable';
-        errorMessage = 'The target return/risk you specified cannot be achieved with the selected assets. Try adjusting your target or using different assets.';
-      } else if (error.message) {
-        errorMessage = error.message;
+      if (error instanceof Error) {
+        if (error.message.includes('real-time')) {
+          errorTitle = '🌐 Data Connection Issue';
+          errorMessage = 'Unable to fetch real-time market data. Please check your internet connection and try again.';
+        } else if (error.message.includes('singular') || error.message.includes('invert')) {
+          errorTitle = '📊 Matrix Calculation Error';
+          errorMessage = 'The covariance matrix is singular (non-invertible). This usually happens when assets are perfectly correlated. Try using different assets or a longer time period.';
+        } else if (error.message.includes('sufficient') || error.message.includes('Insufficient')) {
+          errorTitle = '📊 Data Quality Issue';
+          errorMessage = error.message + '\n\nTry using fewer assets or a different time period.';
+        } else if (error.message.includes('invalid weights')) {
+          errorTitle = '🧮 Calculation Error';
+          errorMessage = 'The optimization produced invalid results. This may be due to extreme market conditions in your data. Try adjusting the time period or optimization method.';
+        } else if (error.message.includes('Target Return') || error.message.includes('Target Risk')) {
+          errorTitle = '🎯 Target Not Achievable';
+          errorMessage = 'The target return/risk you specified cannot be achieved with the selected assets. Try adjusting your target or using different assets.';
+        } else {
+          errorMessage = error.message;
+        }
       }
     
       Alert.alert(errorTitle, errorMessage);
@@ -754,7 +775,6 @@ export default function FixedPortfolioOptimizer() {
                 step={100000}
                 minimumTrackTintColor="#1f4e79"
                 maximumTrackTintColor="#ddd"
-                thumbStyle={styles.sliderThumb}
               />
             </View>
           </>
@@ -781,7 +801,6 @@ export default function FixedPortfolioOptimizer() {
                   onValueChange={setTargetReturn}
                   minimumTrackTintColor="#FF6B6B"
                   maximumTrackTintColor="#ddd"
-                  thumbStyle={[styles.sliderThumb, { backgroundColor: '#FF6B6B' }]}
                 />
                 <Text style={styles.targetHelp}>
                   Optimization will find the portfolio with minimum risk that achieves this return target.
@@ -802,7 +821,6 @@ export default function FixedPortfolioOptimizer() {
                   onValueChange={setTargetRisk}
                   minimumTrackTintColor="#4ECDC4"
                   maximumTrackTintColor="#ddd"
-                  thumbStyle={[styles.sliderThumb, { backgroundColor: '#4ECDC4' }]}
                 />
                 <Text style={styles.targetHelp}>
                   Optimization will find the portfolio with maximum return at this risk level.
@@ -852,7 +870,6 @@ export default function FixedPortfolioOptimizer() {
                 onValueChange={setMonteCarloSimulations}
                 minimumTrackTintColor="#9B59B6"
                 maximumTrackTintColor="#ddd"
-                thumbStyle={[styles.sliderThumb, { backgroundColor: '#9B59B6' }]}
               />
             </View>
 
@@ -867,7 +884,6 @@ export default function FixedPortfolioOptimizer() {
                 onValueChange={setMaxPositionSize}
                 minimumTrackTintColor="#E67E22"
                 maximumTrackTintColor="#ddd"
-                thumbStyle={[styles.sliderThumb, { backgroundColor: '#E67E22' }]}
               />
             </View>
           </>
@@ -1051,17 +1067,15 @@ export default function FixedPortfolioOptimizer() {
 
               {activeTab === 'capm' && (
                 <CAPMAnalysisChart
-                  capmData={Object.fromEntries(
-                    results.tickers.map(ticker => [
-                      ticker,
-                      {
-                        alpha: results.alphas[ticker],
-                        beta: results.betas[ticker],
-                        capmExpectedReturn: results.capmReturns[ticker],
-                        rSquared: 0.75
-                      }
-                    ])
-                  )}
+                  capmData={results.tickers.reduce((acc, ticker) => ({
+                    ...acc,
+                    [ticker]: {
+                      alpha: results.alphas[ticker],
+                      beta: results.betas[ticker],
+                      capmExpectedReturn: results.capmReturns[ticker],
+                      rSquared: 0.75
+                    }
+                  }), {})}
                   riskFreeRate={results.metadata.riskFreeRate}
                   marketReturn={results.metadata.marketReturn}
                 />
@@ -1237,11 +1251,6 @@ const styles = StyleSheet.create({
   slider: {
     width: '100%',
     height: 40,
-  },
-  sliderThumb: {
-    backgroundColor: '#1f4e79',
-    width: 24,
-    height: 24,
   },
   methodScroll: {
     marginBottom: 20,
@@ -1434,7 +1443,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
   },
-  // NEW: Target achievement styles
   targetAchievementContainer: {
     marginTop: 16,
     alignItems: 'center',

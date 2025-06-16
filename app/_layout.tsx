@@ -2,19 +2,45 @@
 // Layout principal pour Expo Router avec navigation par onglets moderne
 
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef, useEffect } from 'react';
-import { 
-  Animated, 
-  Platform, 
-  View, 
-  Text, 
-  StyleSheet,
-  StatusBar as RNStatusBar
-} from 'react-native';
+import { Tabs } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ErrorBoundary, errorManager } from '../src/utils/errorManagement';
+import type { ReactElement, ReactNode } from 'react';
+import React from 'react';
+import {
+  Animated,
+  Platform,
+  StatusBar as RNStatusBar,
+  StyleSheet,
+  Text,
+  View
+} from 'react-native';
+import { AppError, ErrorBoundary, errorManager, ErrorSeverity, ErrorType } from '../src/utils/errorManagement';
+
+// Define types for tab configuration
+interface TabConfig {
+  name: string;
+  title: string;
+  iconName: string;
+  iconNameFocused: string;
+  color: string;
+  gradientColors: string[];
+}
+
+// Define types for tab icon props
+interface TabIconProps {
+  name: string;
+  color: string;
+  size: number;
+  focused: boolean;
+}
+
+// Define types for tab label props
+interface TabLabelProps {
+  label: string;
+  color: string;
+  focused: boolean;
+}
 
 // Composant d'icône d'onglet animé
 const AnimatedTabIcon = ({ 
@@ -22,16 +48,11 @@ const AnimatedTabIcon = ({
   color, 
   size, 
   focused 
-}: { 
-  name: string; 
-  color: string; 
-  size: number; 
-  focused: boolean;
-}) => {
-  const scaleAnim = useRef(new Animated.Value(focused ? 1.1 : 1)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+}: TabIconProps): ReactElement => {
+  const scaleAnim = React.useRef(new Animated.Value(focused ? 1.1 : 1)).current;
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
+  React.useEffect(() => {
     // Animation d'échelle au focus
     Animated.spring(scaleAnim, {
       toValue: focused ? 1.2 : 1,
@@ -93,15 +114,11 @@ const AnimatedTabLabel = ({
   label, 
   color, 
   focused 
-}: { 
-  label: string; 
-  color: string; 
-  focused: boolean; 
-}) => {
-  const fadeAnim = useRef(new Animated.Value(focused ? 1 : 0.7)).current;
-  const slideAnim = useRef(new Animated.Value(focused ? 0 : 3)).current;
+}: TabLabelProps): ReactElement => {
+  const fadeAnim = React.useRef(new Animated.Value(focused ? 1 : 0.7)).current;
+  const slideAnim = React.useRef(new Animated.Value(focused ? 0 : 3)).current;
 
-  useEffect(() => {
+  React.useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: focused ? 1 : 0.7,
@@ -135,7 +152,7 @@ const AnimatedTabLabel = ({
 };
 
 // Composant d'erreur personnalisé pour le layout
-function LayoutErrorFallback({ error, retry }: { error: any; retry: () => void }) {
+function LayoutErrorFallback(error: AppError, retry: () => void): ReactNode {
   return (
     <View style={styles.errorContainer}>
       <LinearGradient
@@ -145,7 +162,7 @@ function LayoutErrorFallback({ error, retry }: { error: any; retry: () => void }
         <Ionicons name="warning" size={64} color="#ffffff" />
         <Text style={styles.errorTitle}>Erreur de Navigation</Text>
         <Text style={styles.errorMessage}>
-          Un problème est survenu avec la navigation. L'application va redémarrer.
+          {error.userMessage || 'Un problème est survenu avec la navigation. L\'application va redémarrer.'}
         </Text>
         <View style={styles.errorButton}>
           <Text style={styles.errorButtonText} onPress={retry}>
@@ -195,18 +212,18 @@ const tabsConfig = [
 
 // Layout principal avec navigation par onglets
 export default function RootLayout() {
-  useEffect(() => {
+  React.useEffect(() => {
     // Initialisation du layout
     console.log('🚀 Initializing Expo Router Layout');
     
     // Gestion des erreurs globales
-    const handleError = (error: any, isFatal?: boolean) => {
+    const handleError = (error: Error, isFatal?: boolean) => {
       console.error('Layout Error:', error);
       errorManager.createError(
-        'RENDER',
+        ErrorType.RENDER,
         error.message || 'Layout error',
         'Erreur dans la navigation de l\'application',
-        isFatal ? 'CRITICAL' : 'HIGH',
+        isFatal ? ErrorSeverity.CRITICAL : ErrorSeverity.HIGH,
         { error: error.toString(), isFatal },
         !isFatal
       );
@@ -226,13 +243,13 @@ export default function RootLayout() {
   return (
     <ErrorBoundary
       fallback={LayoutErrorFallback}
-      onError={(error) => {
+      onError={(error: AppError) => {
         console.error('Root Layout Error Boundary:', error);
       }}
     >
       <StatusBar style="light" backgroundColor="#667eea" />
       <Tabs
-        screenOptions={({ route }) => {
+        screenOptions={({ route }: { route: { name: string } }) => {
           const tabConfig = tabsConfig.find(tab => tab.name === route.name);
           
           return {
@@ -256,7 +273,7 @@ export default function RootLayout() {
               fontSize: 11,
               fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
             },
-            tabBarIcon: ({ focused, color, size }) => {
+            tabBarIcon: ({ focused, color, size }: { focused: boolean; color: string; size: number }) => {
               if (!tabConfig) return null;
               
               const iconName = focused 
@@ -272,7 +289,7 @@ export default function RootLayout() {
                 />
               );
             },
-            tabBarLabel: ({ focused, color }) => {
+            tabBarLabel: ({ focused, color }: { focused: boolean; color: string }) => {
               if (!tabConfig) return null;
               
               return (

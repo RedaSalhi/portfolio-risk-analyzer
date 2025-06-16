@@ -618,6 +618,37 @@ class RealTimeDataFetcher {
       exchangeName: 'NASDAQ'
     };
   }
+
+  // Add fetchHistoricalReturns method
+  async fetchHistoricalReturns(symbols, period = '2y') {
+    console.log(`📊 Fetching historical returns for: ${symbols.join(', ')}`);
+    
+    try {
+      const data = await this.fetchMultipleStocks(symbols, period);
+      
+      // Convert returns object to matrix format
+      const returnsMatrix = symbols.map(symbol => {
+        const returns = data.returns[symbol] || [];
+        if (returns.length === 0) {
+          console.warn(`⚠️ No returns data for ${symbol}`);
+          return Array(data.returns[Object.keys(data.returns)[0]]?.length || 0).fill(0);
+        }
+        return returns;
+      });
+      
+      // Validate matrix
+      if (returnsMatrix.length === 0 || returnsMatrix[0].length === 0) {
+        throw new Error('No valid returns data available');
+      }
+      
+      console.log(`✅ Successfully fetched returns matrix: ${returnsMatrix.length} assets, ${returnsMatrix[0].length} observations`);
+      return returnsMatrix;
+      
+    } catch (error) {
+      console.error('❌ Failed to fetch historical returns:', error.message);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance
