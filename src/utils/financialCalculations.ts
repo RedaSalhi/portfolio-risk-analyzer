@@ -11,8 +11,9 @@ export interface OptimizationResult {
   sharpeRatio: number;
   targetAchieved?: boolean;
   constraintsSatisfied?: boolean;
-  efficientFrontier?: Array<{expectedReturn: number, volatility: number, sharpeRatio: number}>;
-  allSimulations?: Array<{expectedReturn: number, volatility: number, sharpeRatio: number}>;
+  efficientFrontier?: Array<{ expectedReturn: number; volatility: number; sharpeRatio: number }>;
+  allSimulations?: Array<{ expectedReturn: number; volatility: number; sharpeRatio: number }>;
+  riskFreeWeight?: number;
 }
 
 export interface VaRResult {
@@ -53,14 +54,16 @@ export class PortfolioOptimizer {
   private meanReturns!: number[];
   private n: number;
   private assetVolatilities!: number[];
+  private includeRiskFree: boolean;
 
-  constructor(returns: number[][], riskFreeRate: number = 0.02) {
+  constructor(returns: number[][], riskFreeRate: number = 0.02, includeRiskFree: boolean = false) {
     if (!returns || returns.length === 0 || !returns[0] || returns[0].length === 0) {
       throw new Error('Invalid returns data provided');
     }
 
     this.returns = returns;
     this.riskFreeRate = riskFreeRate;
+    this.includeRiskFree = includeRiskFree;
     this.n = returns.length;
     
     this.calculateStatistics();
@@ -312,16 +315,22 @@ export class PortfolioOptimizer {
     const sharpeRatio = (expectedReturn - this.riskFreeRate) / (volatility > 0 ? volatility : 1e-8);
     // Compose weights: risky asset weights scaled by riskyWeight, plus risk-free asset
     const riskyWeights = tangency.weights.map(w => w * clampedRiskyWeight);
-    // Optionally, you can add the risk-free asset as an extra weight at the end
-    // const weights = [...riskyWeights, clampedRiskFreeWeight];
-    // For now, just return risky weights (sum < 1 means rest is risk-free)
+    const weights = this.includeRiskFree
+      ? [...riskyWeights, clampedRiskFreeWeight]
+      : riskyWeights;
+
     const result: OptimizationResult = {
-      weights: riskyWeights,
+      weights,
       expectedReturn,
       volatility,
       sharpeRatio,
-      constraintsSatisfied: true
+      constraintsSatisfied: true,
     };
+
+    if (this.includeRiskFree) {
+      result.riskFreeWeight = clampedRiskFreeWeight;
+    }
+
     return result;
   }
 
@@ -344,16 +353,22 @@ export class PortfolioOptimizer {
     const sharpeRatio = (expectedReturn - this.riskFreeRate) / (volatility > 0 ? volatility : 1e-8);
     // Compose weights: risky asset weights scaled by riskyWeight, plus risk-free asset
     const riskyWeights = tangency.weights.map(w => w * clampedRiskyWeight);
-    // Optionally, you can add the risk-free asset as an extra weight at the end
-    // const weights = [...riskyWeights, clampedRiskFreeWeight];
-    // For now, just return risky weights (sum < 1 means rest is risk-free)
+    const weights = this.includeRiskFree
+      ? [...riskyWeights, clampedRiskFreeWeight]
+      : riskyWeights;
+
     const result: OptimizationResult = {
-      weights: riskyWeights,
+      weights,
       expectedReturn,
       volatility,
       sharpeRatio,
-      constraintsSatisfied: true
+      constraintsSatisfied: true,
     };
+
+    if (this.includeRiskFree) {
+      result.riskFreeWeight = clampedRiskFreeWeight;
+    }
+
     return result;
   }
 

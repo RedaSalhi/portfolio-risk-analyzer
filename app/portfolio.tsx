@@ -327,7 +327,7 @@ export default function FixedPortfolioOptimizer() {
       // Step 5: FIXED - Run optimization with proper target handling
       setOptimizationProgress(80);
       animateProgress(0.8);
-      const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate);
+      const optimizer = new PortfolioOptimizer(returnsMatrix, riskFreeRate, includeRiskFree);
     
       let optimizationResult;
       console.log(`🎯 Running ${optimizationMethod} optimization with ${monteCarloSimulations.toLocaleString()} simulations...`);

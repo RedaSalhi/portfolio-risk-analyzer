@@ -87,7 +87,9 @@ export const PortfolioWeightsChart: React.FC<PortfolioWeightsProps> = ({
     );
   }
 
-  // Ensure weights and tickers have same length
+  const includeRiskFree = weights.length === tickers.length + 1;
+
+  // Ensure weights and tickers have same length for risky assets
   const minLength = Math.min(weights.length, tickers.length);
   const validWeights = weights.slice(0, minLength);
   const validTickers = tickers.slice(0, minLength);
@@ -100,11 +102,21 @@ export const PortfolioWeightsChart: React.FC<PortfolioWeightsProps> = ({
 
   const pieData = validTickers.map((ticker, index) => ({
     name: ticker,
-    population: Math.round(validWeights[index] * 100 * 100) / 100, // Round to 2 decimals
+    population: Math.round(validWeights[index] * 100 * 100) / 100,
     color: colors[index % colors.length],
     legendFontColor: '#34495e',
     legendFontSize: 12,
   }));
+
+  if (includeRiskFree) {
+    pieData.push({
+      name: 'Risk-Free',
+      population: Math.round(weights[weights.length - 1] * 100 * 100) / 100,
+      color: '#95a5a6',
+      legendFontColor: '#34495e',
+      legendFontSize: 12,
+    });
+  }
 
   return (
     <View style={styles.chartContainer}>
