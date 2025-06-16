@@ -173,13 +173,23 @@ export class PortfolioOptimizer {
 
   optimizeMaxSharpe(simulations: number = 50000, constraints?: any): OptimizationResult {
     console.log('🚀 Starting Maximum Sharpe optimization...');
-    
+    let allSimulations: Array<{expectedReturn: number, volatility: number, sharpeRatio: number}> = [];
     // First try deterministic quadratic programming
     try {
       const qpResult = this.optimizeMaxSharpeQP();
       if (qpResult && qpResult.sharpeRatio > 0) {
-        console.log('✅ Max Sharpe (QP) Complete: Sharpe=', qpResult.sharpeRatio.toFixed(4));
-        return qpResult;
+        // Always generate 10,000 random portfolios for visualization
+        for (let i = 0; i < 10000; i++) {
+          const weights = this.generateRandomWeights();
+          if (!this.isValidWeights(weights)) continue;
+          const portfolioReturn = this.calculatePortfolioReturn(weights);
+          const volatility = this.calculatePortfolioVolatility(weights);
+          if (volatility <= 0) continue;
+          const sharpeRatio = (portfolioReturn - this.riskFreeRate) / volatility;
+          allSimulations.push({ expectedReturn: portfolioReturn, volatility, sharpeRatio });
+        }
+        // Attach simulations to the result
+        return { ...qpResult, allSimulations };
       }
     } catch (error) {
       console.warn('QP optimization failed, falling back to Monte Carlo:', error);
@@ -188,7 +198,6 @@ export class PortfolioOptimizer {
     // Fallback to Monte Carlo if QP fails
     let bestWeights: number[] = [];
     let maxSharpe = -Infinity;
-    const allSimulations: Array<{expectedReturn: number, volatility: number, sharpeRatio: number}> = [];
 
     try {
       // Generate initial population with deterministic weights
@@ -287,227 +296,64 @@ export class PortfolioOptimizer {
   // FIXED: Completely rewritten target return optimization
   optimizeForTargetReturn(targetReturn: number): OptimizationResult {
     console.log(`🎯 Starting Target Return optimization: ${(targetReturn * 100).toFixed(2)}%`);
-    
-    // Validate target return
-    const minReturn = Math.min(...this.meanReturns);
-    const maxReturn = Math.max(...this.meanReturns);
-    
-    console.log(`📊 Available return range: ${(minReturn * 100).toFixed(2)}% to ${(maxReturn * 100).toFixed(2)}%`);
-    
-    if (targetReturn < minReturn) {
-      console.warn(`Target return ${(targetReturn * 100).toFixed(2)}% is below minimum achievable return`);
-      targetReturn = minReturn * 1.01; // Slightly above minimum
-    } else if (targetReturn > maxReturn * 1.5) {
-      console.warn(`Target return ${(targetReturn * 100).toFixed(2)}% is very high, may be difficult to achieve`);
-    }
-
-    let bestWeights: number[] = [];
-    let minVolatility = Infinity;
-    let bestDistance = Infinity;
-    const allSimulations: Array<{expectedReturn: number, volatility: number, sharpeRatio: number}> = [];
-
-    // FIXED: Multi-strategy approach for target return
-    const strategies = [
-      { tolerance: 0.005, iterations: 15000, name: 'precise', bias: 0.8 },  // 0.5% tolerance
-      { tolerance: 0.015, iterations: 10000, name: 'relaxed', bias: 0.6 }, // 1.5% tolerance
-      { tolerance: 0.030, iterations: 5000, name: 'loose', bias: 0.4 }      // 3% tolerance
-    ];
-
-    for (const strategy of strategies) {
-      console.log(`🎯 Using ${strategy.name} strategy (tolerance: ${(strategy.tolerance * 100).toFixed(1)}%)`);
-      
-      let strategySuccess = false;
-      
-      for (let i = 0; i < strategy.iterations; i++) {
-        let weights: number[];
-        
-        // FIXED: Generate biased weights towards achieving target return
-        if (i < strategy.iterations * strategy.bias) {
-          weights = this.generateTargetReturnBiasedWeights(targetReturn);
-        } else if (bestWeights.length > 0 && i < strategy.iterations * 0.9) {
-          weights = this.perturbWeights(bestWeights, 0.1);
-        } else {
-          weights = this.generateRandomWeights();
-        }
-
-        if (!this.isValidWeights(weights)) continue;
-
-        const portfolioReturn = this.calculatePortfolioReturn(weights);
-        const volatility = this.calculatePortfolioVolatility(weights);
-        const distance = Math.abs(portfolioReturn - targetReturn);
-        
-        // Store simulation
-        if (volatility > 0) {
-          const sharpeRatio = (portfolioReturn - this.riskFreeRate) / volatility;
-          allSimulations.push({
-            expectedReturn: portfolioReturn,
-            volatility: volatility,
-            sharpeRatio: sharpeRatio
-          });
-        }
-        
-        // FIXED: Better selection criteria for target return
-        if (distance <= strategy.tolerance) {
-          if (volatility > 0 && (
-            volatility < minVolatility || 
-            (Math.abs(volatility - minVolatility) < 0.001 && distance < bestDistance)
-          )) {
-            minVolatility = volatility;
-            bestWeights = [...weights];
-            bestDistance = distance;
-            strategySuccess = true;
-            
-            console.log(`🎯 Found solution: Return=${(portfolioReturn * 100).toFixed(2)}%, Vol=${(volatility * 100).toFixed(2)}%, Distance=${(distance * 100).toFixed(3)}%`);
-          }
-        }
-      }
-      
-      if (strategySuccess && bestDistance <= strategy.tolerance) {
-        console.log(`✅ Strategy ${strategy.name} succeeded`);
-        break;
-      }
-    }
-
-    // FIXED: Fallback if no solution found within tolerance
-    if (bestWeights.length === 0) {
-      console.warn('Target return optimization: no solution within tolerance, finding best approximation');
-      
-      let closestWeights = this.generateEqualWeights();
-      let closestDistance = Infinity;
-      
-      // Find the closest approximation from all simulations
-      for (let i = 0; i < 10000; i++) {
-        const weights = this.generateRandomWeights();
-        if (!this.isValidWeights(weights)) continue;
-        
-        const portfolioReturn = this.calculatePortfolioReturn(weights);
-        const distance = Math.abs(portfolioReturn - targetReturn);
-        
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestWeights = [...weights];
-        }
-      }
-      
-      bestWeights = closestWeights;
-      bestDistance = closestDistance;
-    }
-
-    const result = this.buildOptimizationResult(bestWeights, allSimulations);
-    result.targetAchieved = bestDistance < 0.02; // Within 2% tolerance
-    
-    console.log(`✅ Target Return Complete: Target=${(targetReturn * 100).toFixed(2)}%, Achieved=${(result.expectedReturn * 100).toFixed(2)}%, Vol=${(result.volatility * 100).toFixed(2)}%, Success=${result.targetAchieved}`);
+    // Find tangency (max Sharpe) portfolio
+    const tangency = this.optimizeMaxSharpe(5000);
+    const tangencyReturn = tangency.expectedReturn;
+    const tangencyVol = tangency.volatility;
+    // Calculate risky and risk-free weights
+    const riskyWeight = (targetReturn - this.riskFreeRate) / (tangencyReturn - this.riskFreeRate);
+    const riskFreeWeight = 1 - riskyWeight;
+    // Clamp weights between 0 and 1
+    const clampedRiskyWeight = Math.max(0, Math.min(1, riskyWeight));
+    const clampedRiskFreeWeight = 1 - clampedRiskyWeight;
+    // Portfolio metrics
+    const expectedReturn = clampedRiskyWeight * tangencyReturn + clampedRiskFreeWeight * this.riskFreeRate;
+    const volatility = clampedRiskyWeight * tangencyVol;
+    const sharpeRatio = (expectedReturn - this.riskFreeRate) / (volatility > 0 ? volatility : 1e-8);
+    // Compose weights: risky asset weights scaled by riskyWeight, plus risk-free asset
+    const riskyWeights = tangency.weights.map(w => w * clampedRiskyWeight);
+    // Optionally, you can add the risk-free asset as an extra weight at the end
+    // const weights = [...riskyWeights, clampedRiskFreeWeight];
+    // For now, just return risky weights (sum < 1 means rest is risk-free)
+    const result: OptimizationResult = {
+      weights: riskyWeights,
+      expectedReturn,
+      volatility,
+      sharpeRatio,
+      constraintsSatisfied: true
+    };
     return result;
   }
 
   // FIXED: Completely rewritten target volatility optimization
   optimizeForTargetVolatility(targetVolatility: number): OptimizationResult {
     console.log(`📊 Starting Target Volatility optimization: ${(targetVolatility * 100).toFixed(2)}%`);
-    
-    if (targetVolatility <= 0 || targetVolatility > 1) {
-      throw new Error('Target volatility must be between 0% and 100%');
-    }
-
-    // Validate target volatility
-    const minVol = Math.min(...this.assetVolatilities);
-    const maxVol = Math.max(...this.assetVolatilities);
-    
-    console.log(`📊 Available volatility range: ${(minVol * 100).toFixed(2)}% to ${(maxVol * 100).toFixed(2)}%`);
-
-    let bestWeights: number[] = [];
-    let maxReturn = -Infinity;
-    let bestDistance = Infinity;
-    const allSimulations: Array<{expectedReturn: number, volatility: number, sharpeRatio: number}> = [];
-
-    // FIXED: Multi-strategy approach for target volatility
-    const strategies = [
-      { tolerance: 0.005, iterations: 15000, name: 'precise', bias: 0.8 },  // 0.5% tolerance
-      { tolerance: 0.015, iterations: 10000, name: 'relaxed', bias: 0.6 }, // 1.5% tolerance
-      { tolerance: 0.030, iterations: 5000, name: 'loose', bias: 0.4 }      // 3% tolerance
-    ];
-
-    for (const strategy of strategies) {
-      console.log(`📊 Using ${strategy.name} strategy (tolerance: ${(strategy.tolerance * 100).toFixed(1)}%)`);
-      
-      let strategySuccess = false;
-      
-      for (let i = 0; i < strategy.iterations; i++) {
-        let weights: number[];
-        
-        // FIXED: Generate biased weights towards achieving target volatility
-        if (i < strategy.iterations * strategy.bias) {
-          weights = this.generateTargetVolatilityBiasedWeights(targetVolatility);
-        } else if (bestWeights.length > 0 && i < strategy.iterations * 0.9) {
-          weights = this.perturbWeights(bestWeights, 0.1);
-        } else {
-          weights = this.generateRandomWeights();
-        }
-
-        if (!this.isValidWeights(weights)) continue;
-
-        const volatility = this.calculatePortfolioVolatility(weights);
-        const portfolioReturn = this.calculatePortfolioReturn(weights);
-        const distance = Math.abs(volatility - targetVolatility);
-        
-        // Store simulation
-        if (volatility > 0) {
-          const sharpeRatio = (portfolioReturn - this.riskFreeRate) / volatility;
-          allSimulations.push({
-            expectedReturn: portfolioReturn,
-            volatility: volatility,
-            sharpeRatio: sharpeRatio
-          });
-        }
-        
-        // FIXED: Better selection criteria for target volatility
-        if (distance <= strategy.tolerance) {
-          if (portfolioReturn > maxReturn || 
-              (Math.abs(portfolioReturn - maxReturn) < 0.001 && distance < bestDistance)) {
-            maxReturn = portfolioReturn;
-            bestWeights = [...weights];
-            bestDistance = distance;
-            strategySuccess = true;
-            
-            console.log(`📊 Found solution: Vol=${(volatility * 100).toFixed(2)}%, Return=${(portfolioReturn * 100).toFixed(2)}%, Distance=${(distance * 100).toFixed(3)}%`);
-          }
-        }
-      }
-      
-      if (strategySuccess && bestDistance <= strategy.tolerance) {
-        console.log(`✅ Strategy ${strategy.name} succeeded`);
-        break;
-      }
-    }
-
-    // FIXED: Fallback if no solution found within tolerance
-    if (bestWeights.length === 0) {
-      console.warn('Target volatility optimization: no solution within tolerance, finding best approximation');
-      
-      let closestWeights = this.generateEqualWeights();
-      let closestDistance = Infinity;
-      
-      // Find the closest approximation
-      for (let i = 0; i < 10000; i++) {
-        const weights = this.generateRandomWeights();
-        if (!this.isValidWeights(weights)) continue;
-        
-        const volatility = this.calculatePortfolioVolatility(weights);
-        const distance = Math.abs(volatility - targetVolatility);
-        
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestWeights = [...weights];
-        }
-      }
-      
-      bestWeights = closestWeights;
-      bestDistance = closestDistance;
-    }
-
-    const result = this.buildOptimizationResult(bestWeights, allSimulations);
-    result.targetAchieved = bestDistance < 0.02; // Within 2% tolerance
-    
-    console.log(`✅ Target Volatility Complete: Target=${(targetVolatility * 100).toFixed(2)}%, Achieved=${(result.volatility * 100).toFixed(2)}%, Return=${(result.expectedReturn * 100).toFixed(2)}%, Success=${result.targetAchieved}`);
+    // Find tangency (max Sharpe) portfolio
+    const tangency = this.optimizeMaxSharpe(5000);
+    const tangencyReturn = tangency.expectedReturn;
+    const tangencyVol = tangency.volatility;
+    // Calculate risky and risk-free weights
+    const riskyWeight = targetVolatility / tangencyVol;
+    const riskFreeWeight = 1 - riskyWeight;
+    // Clamp weights between 0 and 1
+    const clampedRiskyWeight = Math.max(0, Math.min(1, riskyWeight));
+    const clampedRiskFreeWeight = 1 - clampedRiskyWeight;
+    // Portfolio metrics
+    const expectedReturn = this.riskFreeRate + clampedRiskyWeight * (tangencyReturn - this.riskFreeRate);
+    const volatility = targetVolatility;
+    const sharpeRatio = (expectedReturn - this.riskFreeRate) / (volatility > 0 ? volatility : 1e-8);
+    // Compose weights: risky asset weights scaled by riskyWeight, plus risk-free asset
+    const riskyWeights = tangency.weights.map(w => w * clampedRiskyWeight);
+    // Optionally, you can add the risk-free asset as an extra weight at the end
+    // const weights = [...riskyWeights, clampedRiskFreeWeight];
+    // For now, just return risky weights (sum < 1 means rest is risk-free)
+    const result: OptimizationResult = {
+      weights: riskyWeights,
+      expectedReturn,
+      volatility,
+      sharpeRatio,
+      constraintsSatisfied: true
+    };
     return result;
   }
 

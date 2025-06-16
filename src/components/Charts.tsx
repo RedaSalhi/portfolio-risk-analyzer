@@ -12,11 +12,14 @@ import {
   Text,
   View,
 } from 'react-native';
-import { BarChart, LineChart, PieChart } from 'react-native-chart-kit';
+import { BarChart, PieChart } from 'react-native-chart-kit';
+import Svg, { Circle, Line, Path, RNSVGText as SvgText } from 'react-native-svg';
 Chart.register(...registerables);
 
 const { width } = Dimensions.get('window');
 const chartWidth = width - 40;
+const chartHeight = 300;
+const padding = 40;
 
 // FIXED: Updated interfaces to match actual usage
 interface PortfolioWeightsProps {
@@ -137,7 +140,7 @@ export const PortfolioWeightsChart: React.FC<PortfolioWeightsProps> = ({
   );
 };
 
-// FIXED: Efficient Frontier Chart with proper validation
+// Enhanced EfficientFrontierChart - Adapted from Python matplotlib implementation
 export const EfficientFrontierChart: React.FC<EfficientFrontierProps> = ({ 
   efficientFrontier, 
   optimalPortfolio, 
@@ -145,7 +148,13 @@ export const EfficientFrontierChart: React.FC<EfficientFrontierProps> = ({
   riskFreeRate = 0.02,
   showCapitalMarketLine = false
 }) => {
-  // Validation
+  console.log('🔍 EfficientFrontierChart Debug Info:');
+  console.log('- efficientFrontier points:', efficientFrontier?.length || 0);
+  console.log('- allSimulations points:', allSimulations?.length || 0);
+  console.log('- showCapitalMarketLine:', showCapitalMarketLine);
+  console.log('- riskFreeRate:', riskFreeRate);
+
+  // Enhanced validation with debug info
   if (!efficientFrontier || efficientFrontier.length === 0) {
     return (
       <View style={styles.chartContainer}>
@@ -154,73 +163,395 @@ export const EfficientFrontierChart: React.FC<EfficientFrontierProps> = ({
           <View style={styles.emptyState}>
             <Ionicons name="trending-up-outline" size={48} color="#bdc3c7" />
             <Text style={styles.emptyText}>No frontier data available</Text>
+            <Text style={styles.debugText}>
+              Debug: efficientFrontier = {efficientFrontier ? efficientFrontier.length : 'null'} points
+            </Text>
           </View>
         </LinearGradient>
       </View>
     );
   }
 
-  // Prepare chart data
-  const frontierPoints = efficientFrontier.slice(0, 20); // Limit points for readability
+  // Combine all data to find ranges
+  const allData = [...efficientFrontier, ...allSimulations];
+  if (optimalPortfolio) allData.push(optimalPortfolio);
   
-  const chartData = {
-    labels: frontierPoints.map(p => (p.volatility * 100).toFixed(1)),
-    datasets: [
-      {
-        data: frontierPoints.map(p => p.expectedReturn * 100),
-        color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
-        strokeWidth: 3,
-      }
-    ],
+  // Set x-axis (volatility) from 0 to 1
+  const minVol = 0;
+  const maxVol = 1;
+  const minReturn = 0; // Start from 0 for returns
+  const maxReturn = Math.max(...allData.map(p => p.expectedReturn));
+
+  // Add padding to y-axis only
+  const volRange = maxVol - minVol;
+  const returnRange = maxReturn - minReturn;
+  const adjustedMaxReturn = maxReturn + returnRange * 0.1; // Add 10% padding to top
+  const adjustedMaxVol = maxVol; // No padding, fixed at 1
+
+  console.log('📊 Chart Ranges:');
+  console.log(`- Volatility: 0% to ${(adjustedMaxVol * 100).toFixed(1)}%`);
+  console.log(`- Return: 0% to ${(adjustedMaxReturn * 100).toFixed(1)}%`);
+
+  // Scaling functions
+  const scaleX = (vol: number) => padding + (vol / adjustedMaxVol) * (chartWidth - 2 * padding);
+  const scaleY = (ret: number) => chartHeight - padding - (ret / adjustedMaxReturn) * (chartHeight - 2 * padding);
+
+  // Create axis ticks for volatility (every 0.2 from 0 to 1)
+  const volTicks = [];
+  for (let i = 0; i <= 5; i++) {
+    const vol = 0.2 * i;
+    volTicks.push({ vol, x: scaleX(vol), label: vol.toFixed(1) });
+  }
+  // Y-axis ticks remain as before
+  const returnTicks = [];
+  for (let i = 0; i <= 5; i++) {
+    const ret = (adjustedMaxReturn / 5) * i;
+    returnTicks.push({ ret, y: scaleY(ret), label: (ret * 100).toFixed(1) });
+  }
+
+  // Viridis color mapping for Sharpe ratios
+  const getViridisColor = (sharpe: number, minSharpe: number, maxSharpe: number): string => {
+    if (maxSharpe === minSharpe) return 'rgb(68, 1, 84)'; // Default purple if no range
+    
+    const normalizedSharpe = Math.max(0, Math.min(1, (sharpe - minSharpe) / (maxSharpe - minSharpe)));
+    
+    if (normalizedSharpe < 0.25) {
+      const t = normalizedSharpe / 0.25;
+      const r = Math.round(68 + (58 - 68) * t);
+      const g = Math.round(1 + (82 - 1) * t);
+      const b = Math.round(84 + (139 - 84) * t);
+      return `rgb(${r}, ${g}, ${b})`;
+    } else if (normalizedSharpe < 0.5) {
+      const t = (normalizedSharpe - 0.25) / 0.25;
+      const r = Math.round(58 + (32 - 58) * t);
+      const g = Math.round(82 + (144 - 82) * t);
+      const b = Math.round(139 + (140 - 139) * t);
+      return `rgb(${r}, ${g}, ${b})`;
+    } else if (normalizedSharpe < 0.75) {
+      const t = (normalizedSharpe - 0.5) / 0.25;
+      const r = Math.round(32 + (94 - 32) * t);
+      const g = Math.round(144 + (201 - 144) * t);
+      const b = Math.round(140 + (98 - 140) * t);
+      return `rgb(${r}, ${g}, ${b})`;
+    } else {
+      const t = (normalizedSharpe - 0.75) / 0.25;
+      const r = Math.round(94 + (253 - 94) * t);
+      const g = Math.round(201 + (231 - 201) * t);
+      const b = Math.round(98 + (37 - 98) * t);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
   };
+
+  // Calculate Sharpe ratio range from all available data
+  const allSharpeRatios = allData.map(p => p.sharpeRatio).filter(s => isFinite(s) && !isNaN(s));
+  const minSharpe = Math.min(...allSharpeRatios);
+  const maxSharpe = Math.max(...allSharpeRatios);
+
+  console.log(`📈 Sharpe range: ${minSharpe.toFixed(3)} to ${maxSharpe.toFixed(3)}`);
+
+  // Show all simulation points (no sampling)
+  const sampledSimulations = allSimulations;
+
+  console.log(`🎯 Rendering ${sampledSimulations.length} simulation points`);
+
+  // Create efficient frontier path
+  const sortedFrontier = [...efficientFrontier].sort((a, b) => a.volatility - b.volatility);
+  
+  // Start from risk-free rate if showing CML
+  let frontierPath = '';
+  if (showCapitalMarketLine && riskFreeRate !== undefined) {
+    const x0 = scaleX(0);
+    const y0 = scaleY(riskFreeRate);
+    frontierPath = `M${x0},${y0}`;
+    
+    sortedFrontier.forEach((point, index) => {
+      const x = scaleX(point.volatility);
+      const y = scaleY(point.expectedReturn);
+      frontierPath += ` L${x},${y}`;
+    });
+  } else {
+    sortedFrontier.forEach((point, index) => {
+      const x = scaleX(point.volatility);
+      const y = scaleY(point.expectedReturn);
+      frontierPath += index === 0 ? `M${x},${y}` : ` L${x},${y}`;
+    });
+  }
+
+  // Create Capital Market Line if requested
+  let cmlPath = '';
+  if (showCapitalMarketLine && riskFreeRate !== undefined && optimalPortfolio) {
+    const slope = (optimalPortfolio.expectedReturn - riskFreeRate) / optimalPortfolio.volatility;
+    const x1 = scaleX(0);
+    const y1 = scaleY(riskFreeRate);
+    const x2 = scaleX(adjustedMaxVol);
+    const y2 = scaleY(riskFreeRate + slope * adjustedMaxVol);
+    cmlPath = `M${x1},${y1} L${x2},${y2}`;
+  }
 
   return (
     <View style={styles.chartContainer}>
       <LinearGradient colors={['#e3f2fd', '#ffffff']} style={styles.chartGradient}>
         <Text style={styles.chartTitle}>📈 Efficient Frontier</Text>
-        <Text style={styles.chartSubtitle}>Risk-Return Optimization (Markowitz)</Text>
+        <Text style={styles.chartSubtitle}>
+          {showCapitalMarketLine ? 'Risk-Return Optimization with Risk-Free Asset' : 'Risk-Return Optimization (Markowitz)'}
+        </Text>
         
-        <LineChart
-          data={chartData}
-          width={chartWidth}
-          height={220}
-          chartConfig={{
-            backgroundColor: 'transparent',
-            backgroundGradientFrom: '#ffffff',
-            backgroundGradientTo: '#ffffff',
-            decimalPlaces: 2,
-            color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
-            labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
-            style: { borderRadius: 16 },
-          }}
-          style={styles.chart}
-          withDots={true}
-          withShadow={false}
-          withInnerLines={false}
-        />
+        {/* Debug info panel */}
+        <View style={styles.debugPanel}>
+          <Text style={styles.debugText}>
+            Debug: {sampledSimulations.length} portfolios | {sortedFrontier.length} frontier points
+          </Text>
+        </View>
+        
+        <View style={styles.svgContainer}>
+          <Svg width={chartWidth} height={chartHeight}>
+            {/* Grid lines */}
+            {volTicks.map((tick, index) => (
+              <Line
+                key={`vgrid-${index}`}
+                x1={tick.x}
+                y1={padding}
+                x2={tick.x}
+                y2={chartHeight - padding}
+                stroke="#f0f0f0"
+                strokeWidth="1"
+              />
+            ))}
+            {returnTicks.map((tick, index) => (
+              <Line
+                key={`hgrid-${index}`}
+                x1={padding}
+                y1={tick.y}
+                x2={chartWidth - padding}
+                y2={tick.y}
+                stroke="#f0f0f0"
+                strokeWidth="1"
+              />
+            ))}
 
-        {optimalPortfolio && (
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>Optimal Portfolio</Text>
-              <Text style={styles.statValue}>
-                Sharpe: {optimalPortfolio.sharpeRatio.toFixed(3)}
-              </Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>Expected Return</Text>
-              <Text style={styles.statValue}>
-                {(optimalPortfolio.expectedReturn * 100).toFixed(2)}%
-              </Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>Volatility</Text>
-              <Text style={styles.statValue}>
-                {(optimalPortfolio.volatility * 100).toFixed(2)}%
-              </Text>
-            </View>
+            {/* Portfolio simulations scatter plot */}
+            {sampledSimulations.map((sim, index) => {
+              const x = scaleX(sim.volatility);
+              const y = scaleY(sim.expectedReturn);
+              
+              // Skip points outside the visible area
+              if (x < padding || x > chartWidth - padding || y < padding || y > chartHeight - padding) {
+                return null;
+              }
+              
+              const color = getViridisColor(sim.sharpeRatio, minSharpe, maxSharpe);
+              
+              return (
+                <Circle
+                  key={`sim-${index}`}
+                  cx={x}
+                  cy={y}
+                  r="2.5"
+                  fill={color}
+                  opacity="0.7"
+                />
+              );
+            })}
+
+            {/* Capital Market Line (behind efficient frontier) */}
+            {showCapitalMarketLine && cmlPath && (
+              <Path
+                d={cmlPath}
+                stroke="black"
+                strokeWidth="2"
+                strokeDasharray="5,5"
+                fill="none"
+                opacity="0.8"
+              />
+            )}
+
+            {/* Efficient Frontier curve */}
+            {frontierPath && (
+              <Path
+                d={frontierPath}
+                stroke="#3498db"
+                strokeWidth="4"
+                fill="none"
+              />
+            )}
+
+            {/* Optimal Portfolio highlight */}
+            {optimalPortfolio && (
+              <Circle
+                cx={scaleX(optimalPortfolio.volatility)}
+                cy={scaleY(optimalPortfolio.expectedReturn)}
+                r="8"
+                fill="#e74c3c"
+                stroke="white"
+                strokeWidth="3"
+              />
+            )}
+
+            {/* Risk-free point */}
+            {showCapitalMarketLine && riskFreeRate !== undefined && (
+              <Circle
+                cx={scaleX(0)}
+                cy={scaleY(riskFreeRate)}
+                r="6"
+                fill="#2c3e50"
+                stroke="white"
+                strokeWidth="2"
+              />
+            )}
+
+            {/* Axes */}
+            <Line
+              x1={padding}
+              y1={chartHeight - padding}
+              x2={chartWidth - padding}
+              y2={chartHeight - padding}
+              stroke="#2c3e50"
+              strokeWidth="2"
+            />
+            <Line
+              x1={padding}
+              y1={padding}
+              x2={padding}
+              y2={chartHeight - padding}
+              stroke="#2c3e50"
+              strokeWidth="2"
+            />
+
+            {/* X-axis labels */}
+            {volTicks.map((tick, index) => (
+              <SvgText
+                key={`xlabel-${index}`}
+                x={tick.x}
+                y={chartHeight - padding + 20}
+                fontSize="11"
+                fill="#2c3e50"
+                alignmentBaseline="middle"
+              >
+                <Text>{tick.label}</Text>
+              </SvgText>
+            ))}
+
+            {/* Y-axis labels */}
+            {returnTicks.map((tick, index) => (
+              <SvgText
+                key={`ylabel-${index}`}
+                x={padding - 10}
+                y={tick.y + 4}
+                fontSize="11"
+                fill="#2c3e50"
+                alignmentBaseline="middle"
+              >
+                <Text>{tick.label}</Text>
+              </SvgText>
+            ))}
+
+            {/* Axis titles */}
+            <SvgText
+              x={chartWidth / 2}
+              y={chartHeight - 5}
+              fontSize="12"
+              fill="#2c3e50"
+              alignmentBaseline="middle"
+              fontWeight="600"
+            >
+              <Text>Volatility (Standard Deviation %)</Text>
+            </SvgText>
+            
+            {/* Vertical axis title - using multiple lines */}
+            <SvgText
+              x={20}
+              y={chartHeight / 2}
+              fontSize="12"
+              fill="#2c3e50"
+              alignmentBaseline="middle"
+              fontWeight="600"
+            >
+              <Text>Expected</Text>
+            </SvgText>
+            <SvgText
+              x={20}
+              y={chartHeight / 2 + 15}
+              fontSize="12"
+              fill="#2c3e50"
+              alignmentBaseline="middle"
+              fontWeight="600"
+            >
+              <Text>Return (%)</Text>
+            </SvgText>
+          </Svg>
+        </View>
+
+        {/* Color Legend for Sharpe Ratios */}
+        <View style={styles.colorLegend}>
+          <Text style={styles.legendTitle}>Sharpe Ratio</Text>
+          <View style={styles.colorBar}>
+            <View style={[styles.colorSegment, { backgroundColor: 'rgb(68, 1, 84)' }]} />
+            <View style={[styles.colorSegment, { backgroundColor: 'rgb(58, 82, 139)' }]} />
+            <View style={[styles.colorSegment, { backgroundColor: 'rgb(32, 144, 140)' }]} />
+            <View style={[styles.colorSegment, { backgroundColor: 'rgb(94, 201, 98)' }]} />
+            <View style={[styles.colorSegment, { backgroundColor: 'rgb(253, 231, 37)' }]} />
           </View>
-        )}
+          <View style={styles.legendLabels}>
+            <Text style={styles.legendText}>{minSharpe.toFixed(2)}</Text>
+            <Text style={styles.legendText}>{maxSharpe.toFixed(2)}</Text>
+          </View>
+        </View>
+
+        {/* Statistics Panel */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>📊 Expected Return</Text>
+            <Text style={styles.statValue}>
+              {(optimalPortfolio.expectedReturn * 100).toFixed(2)}%
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>📉 Volatility</Text>
+            <Text style={styles.statValue}>
+              {(optimalPortfolio.volatility * 100).toFixed(2)}%
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>⚡ Sharpe Ratio</Text>
+            <Text style={styles.statValue}>
+              {optimalPortfolio.sharpeRatio.toFixed(3)}
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>🎯 Simulations</Text>
+            <Text style={styles.statValue}>
+              {sampledSimulations.length.toLocaleString()}
+            </Text>
+          </View>
+        </View>
+
+        {/* Legend */}
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={styles.scatterDot} />
+            <Text style={styles.legendText}>Portfolio Simulations</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendLine, { backgroundColor: '#3498db' }]} />
+            <Text style={styles.legendText}>Efficient Frontier</Text>
+          </View>
+          {showCapitalMarketLine && (
+            <View style={styles.legendItem}>
+              <View style={[styles.legendLine, { backgroundColor: '#000000' }]} />
+              <Text style={styles.legendText}>Capital Market Line (CML)</Text>
+            </View>
+          )}
+          <View style={styles.legendItem}>
+            <View style={styles.redDot} />
+            <Text style={styles.legendText}>Max Sharpe Ratio</Text>
+          </View>
+          {showCapitalMarketLine && (
+            <View style={styles.legendItem}>
+              <View style={styles.blackDot} />
+              <Text style={styles.legendText}>Risk-Free Asset</Text>
+            </View>
+          )}
+        </View>
       </LinearGradient>
     </View>
   );
@@ -480,20 +811,20 @@ export const CapitalAllocationChart: React.FC<CapitalAllocationProps> = ({
 // Enhanced StyleSheet
 const styles = StyleSheet.create({
   chartContainer: {
-    marginVertical: 10,
-    borderRadius: 16,
-    overflow: 'hidden',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    marginVertical: 15,
+    marginHorizontal: 20,
+    borderRadius: 20,
+    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
     shadowRadius: 8,
   },
   chartGradient: {
     padding: 20,
+    borderRadius: 20,
   },
   chartTitle: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#2c3e50',
     textAlign: 'center',
@@ -505,9 +836,113 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 15,
   },
-  chart: {
+  debugPanel: {
+    backgroundColor: '#f8f9fa',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  debugText: {
+    fontSize: 11,
+    color: '#6c757d',
+    textAlign: 'center',
+  },
+  svgContainer: {
+    marginVertical: 10,
+    alignItems: 'center',
+  },
+  colorLegend: {
+    marginTop: 15,
+    paddingVertical: 10,
+  },
+  legendTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  colorBar: {
+    flexDirection: 'row',
+    height: 20,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 5,
+  },
+  colorSegment: {
+    flex: 1,
+  },
+  legendLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    marginTop: 20,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#ecf0f1',
+  },
+  statItem: {
+    alignItems: 'center',
+    minWidth: '22%',
     marginVertical: 8,
-    borderRadius: 16,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#7f8c8d',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  statValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    textAlign: 'center',
+  },
+  legend: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#ecf0f1',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  legendLine: {
+    width: 20,
+    height: 3,
+    marginRight: 10,
+    borderRadius: 2,
+  },
+  legendText: {
+    fontSize: 12,
+    color: '#2c3e50',
+  },
+  scatterDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgb(94, 201, 98)',
+    marginRight: 10,
+  },
+  redDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#e74c3c',
+    marginRight: 8,
+  },
+  blackDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#2c3e50',
+    marginRight: 10,
   },
   emptyState: {
     alignItems: 'center',
@@ -525,27 +960,9 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
   },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 15,
-    flexWrap: 'wrap',
-  },
-  statItem: {
-    alignItems: 'center',
-    minWidth: 80,
-    marginVertical: 5,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    textAlign: 'center',
-  },
-  statValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginTop: 2,
+  chart: {
+    marginVertical: 8,
+    borderRadius: 16,
   },
   weightsList: {
     marginTop: 15,
@@ -577,91 +994,86 @@ const styles = StyleSheet.create({
     color: '#e74c3c',
   },
   capmStats: {
-    marginTop: 10,
-    alignItems: 'center',
+    marginTop: 15,
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#ecf0f1',
   },
   capmDetails: {
     flexDirection: 'row',
-    marginTop: 15,
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
   },
   capmItem: {
     alignItems: 'center',
-    marginHorizontal: 15,
-    padding: 10,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    minWidth: 80,
+    minWidth: '30%',
+    marginVertical: 8,
   },
   capmTicker: {
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#2c3e50',
   },
   capmBeta: {
-    fontSize: 14,
-    color: '#e74c3c',
-    marginTop: 5,
-  },
-  capmAlpha: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
-  correlationMatrix: {
-    alignItems: 'center',
-    marginVertical: 10,
-  },
-  correlationHeader: {
-    flexDirection: 'row',
-  },
-  correlationRow: {
-    flexDirection: 'row',
-  },
-  correlationCell: {
-    width: 60,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 0.5,
-    borderColor: '#ecf0f1',
-  },
-  correlationHeaderText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-  correlationValue: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  correlationLegend: {
-    marginTop: 10,
-    alignItems: 'center',
-  },
-  legendText: {
     fontSize: 12,
     color: '#7f8c8d',
-    textAlign: 'center',
+  },
+  capmAlpha: {
+    fontSize: 12,
+    color: '#e74c3c',
   },
   allocationDetails: {
     marginTop: 15,
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#ecf0f1',
   },
   allocationRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    backgroundColor: '#f8f9fa',
-    marginVertical: 2,
-    borderRadius: 8,
+    alignItems: 'center',
+    paddingVertical: 4,
   },
   allocationLabel: {
-    fontSize: 14,
-    color: '#2c3e50',
+    fontSize: 12,
+    color: '#7f8c8d',
   },
   allocationValue: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#27ae60',
+    color: '#2c3e50',
+  },
+  correlationMatrix: {
+    marginTop: 10,
+  },
+  correlationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+  },
+  correlationCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  correlationHeaderText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c3e50',
+  },
+  correlationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+  },
+  correlationValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
+  correlationLegend: {
+    marginTop: 10,
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#ecf0f1',
   },
 });
