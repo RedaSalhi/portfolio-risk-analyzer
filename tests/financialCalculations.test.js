@@ -301,17 +301,28 @@ describe('Integration Tests', () => {
     expect(parametricResult.expectedShortfall).toBeGreaterThan(parametricResult.var);
     
     // Test historical VaR
-    const historicalResult = VaRCalculator.calculatePortfolioHistoricalVaR(
+  const historicalResult = VaRCalculator.calculatePortfolioHistoricalVaR(
       mockReturns, weights, 0.95, 1000000
-    );
+  );
     
     expect(historicalResult.var).toBeGreaterThan(0);
     expect(historicalResult.expectedShortfall).toBeGreaterThan(historicalResult.var);
     
     // VaR methods should give similar results for normal data
-    const ratio = parametricResult.var / historicalResult.var;
-    expect(ratio).toBeGreaterThan(0.5);
-    expect(ratio).toBeLessThan(2.0);
+  const ratio = parametricResult.var / historicalResult.var;
+  expect(ratio).toBeGreaterThan(0.5);
+  expect(ratio).toBeLessThan(2.0);
+
+  // Test Monte Carlo VaR
+  const mcResult = VaRCalculator.calculateMonteCarloVaR(
+    VaRCalculator.calculatePortfolioReturns(mockReturns, weights),
+    0.95,
+    1000000,
+    5000
+  );
+
+  expect(mcResult.var).toBeGreaterThan(0);
+  expect(mcResult.expectedShortfall).toBeGreaterThan(mcResult.var);
   });
 
   test('complete portfolio optimization workflow', () => {

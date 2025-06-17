@@ -1245,25 +1245,40 @@ export class VaRCalculator {
     confidenceLevel: number,
     portfolioValue: number,
     numSimulations: number = 10000
-  ): number {
+  ): VaRResult {
     try {
+      if (!returns.length) {
+        throw new Error('No returns provided');
+      }
+
       const mean = returns.reduce((sum: number, x: number) => sum + x, 0) / returns.length;
       const volatility = Math.sqrt(
-        returns.reduce((sum: number, x: number) => sum + Math.pow(x - mean, 2), 0) / returns.length
+        returns.reduce((sum: number, x: number) => sum + Math.pow(x - mean, 2), 0) /
+          (returns.length - 1)
       );
 
       const simulations: number[] = [];
       for (let i = 0; i < numSimulations; i++) {
         const z = this.generateNormalRandom();
         const simulatedReturn = mean + volatility * z;
-        simulations.push(simulatedReturn);
+        simulations.push(simulatedReturn * portfolioValue);
       }
 
       simulations.sort((a: number, b: number) => a - b);
       const varIndex = Math.floor(numSimulations * (1 - confidenceLevel));
-      const varValue = Math.abs(simulations[varIndex] * portfolioValue);
+      const varValue = Math.abs(simulations[Math.max(0, varIndex)]);
 
-      return varValue;
+      const tail = simulations.slice(0, Math.max(1, varIndex + 1));
+      const expectedShortfall = Math.abs(
+        tail.reduce((sum, r) => sum + r, 0) / tail.length
+      );
+
+      return {
+        var: varValue,
+        expectedShortfall,
+        confidenceLevel,
+        method: 'Monte Carlo'
+      };
     } catch (error: unknown) {
       if (error instanceof Error) {
         throw new Error(`Monte Carlo VaR calculation failed: ${error.message}`);
