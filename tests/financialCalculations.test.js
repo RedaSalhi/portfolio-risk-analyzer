@@ -175,6 +175,14 @@ describe('VaRCalculator - Edge Cases and Fixes', () => {
       expect(cleaned.every(x => x === 0.01)).toBe(true);
     });
   });
+
+  describe('Monte Carlo VaR', () => {
+    test('throws error with insufficient returns', () => {
+      expect(() => {
+        VaRCalculator.calculateMonteCarloVaR([0.01], 0.95, 1000);
+      }).toThrow('At least two returns are required for Monte Carlo VaR');
+    });
+  });
 });
 
 describe('CorrelationCalculator', () => {

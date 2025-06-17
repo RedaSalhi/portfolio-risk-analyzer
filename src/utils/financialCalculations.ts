@@ -1250,6 +1250,9 @@ export class VaRCalculator {
       if (!returns.length) {
         throw new Error('No returns provided');
       }
+      if (returns.length < 2) {
+        throw new Error('At least two returns are required for Monte Carlo VaR');
+      }
 
       const mean = returns.reduce((sum: number, x: number) => sum + x, 0) / returns.length;
       const volatility = Math.sqrt(
