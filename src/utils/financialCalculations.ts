@@ -1280,7 +1280,7 @@ export class VaRCalculator {
         var: varValue,
         expectedShortfall,
         confidenceLevel,
-        method: 'Monte Carlo'
+        method: 'monte_carlo'
       };
     } catch (error: unknown) {
       if (error instanceof Error) {
