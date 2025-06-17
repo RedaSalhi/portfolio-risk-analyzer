@@ -1777,6 +1777,9 @@ export class CAPMAnalyzer {
   }
 
   private calculateVariance(data: number[]): number {
+    if (!data || data.length < 2) {
+      throw new Error('At least two returns are required to calculate volatility');
+    }
     const mean = data.reduce((s, v) => s + v, 0) / data.length;
     const variance = data.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (data.length - 1);
     return variance;
