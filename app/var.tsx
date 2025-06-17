@@ -470,15 +470,15 @@ export default function CompleteVaRAnalyzer() {
         );
       } else if (method === 'monte_carlo') {
         const portfolioReturns = VaRCalculator.calculatePortfolioReturns(returnsMatrix, weights);
-        const varValue = await VaRCalculator.calculateMonteCarloVaR(
+        const mcResult = VaRCalculator.calculateMonteCarloVaR(
           portfolioReturns,
           confidenceLevel,
           positionSize
         );
-        
+
         portfolioResult = {
-          var: varValue,
-          expectedShortfall: varValue * 1.5,
+          var: mcResult.var,
+          expectedShortfall: mcResult.expectedShortfall,
           method: 'monte_carlo',
           portfolioMean: 0,
           portfolioVolatility: 0,
