@@ -473,7 +473,8 @@ export default function CompleteVaRAnalyzer() {
         const mcResult = VaRCalculator.calculateMonteCarloVaR(
           portfolioReturns,
           confidenceLevel,
-          positionSize
+          positionSize,
+          numSimulations
         );
 
         portfolioResult = {
